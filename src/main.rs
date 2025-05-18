@@ -1,12 +1,19 @@
+mod object;
 mod repository;
 
 use clap::{Parser, Subcommand};
+use repository::Repository;
 use std::path::Path;
 
 #[derive(Subcommand, Debug)]
 enum Command {
     /// Initialize a gitrs repository
-    Init { path: String },
+    ///
+    /// The path defaults to the directory the gitrs init command is invoked in
+    Init {
+        #[arg(default_value = ".")]
+        path: String,
+    },
 }
 
 /// A light-weight git clone written in Rust
@@ -21,6 +28,6 @@ fn main() {
     let gitrs = Gitrs::parse();
 
     match gitrs.cmd {
-        Command::Init { path } => repository::Repository::new(Path::new(&path)),
+        Command::Init { path } => Repository::init(Path::new(&path)),
     };
 }

@@ -1,5 +1,6 @@
+// Definitions and methods for the gitrs "repository"
 use core::panic;
-use std::fs::{self, File};
+use std::fs::{self, File, canonicalize};
 use std::io::Write;
 use std::path::{Path, PathBuf};
 
@@ -10,6 +11,13 @@ pub struct Repository {
 
 impl Repository {
     pub fn new(worktree: &Path) -> Self {
+        Self {
+            worktree: worktree.to_path_buf(),
+            gitdir: worktree.join(".gitrs"),
+        }
+    }
+
+    pub fn init(worktree: &Path) -> Self {
         let gitdir = worktree.join(".gitrs");
         if worktree.exists() {
             if !worktree.is_dir() {
@@ -25,10 +33,7 @@ impl Repository {
             });
         }
 
-        let repository = Self {
-            worktree: worktree.to_path_buf(),
-            gitdir,
-        };
+        let repository = Self::new(worktree);
 
         let did_create_dirs = [
             repository.repo_dir(&["branches"], true),
@@ -61,6 +66,33 @@ impl Repository {
 
         repository
     }
+
+    // TODO: these should return Result instead and check for file existence here
+    pub fn get_path_to_file(&self, paths: &[&str]) -> Option<PathBuf> {
+        self.repo_file(paths, false)
+    }
+
+    pub fn get_path_to_dir(&self, paths: &[&str]) -> Option<PathBuf> {
+        self.repo_dir(paths, false)
+    }
+
+    /// Finds the root directory of the nearest gitrs repository by traversing parents of the
+    /// `current_path`
+    pub fn find_repository(current_path: &Path) -> Option<Repository> {
+        let canonical_current_path = canonicalize(current_path).unwrap();
+        if canonical_current_path.join(".gitrs").exists() {
+            Some(Repository::new(current_path))
+        } else {
+            match canonical_current_path.parent() {
+                None => None,
+                Some(parent_dir) => Repository::find_repository(parent_dir),
+            }
+        }
+    }
+
+    /////////////////////////////////////
+    /// Repository File Management
+    /////////////////////////////////////
 
     // Computes the path under a repository's gitrs directory
     fn repo_path(&self, paths: &[&str]) -> PathBuf {
