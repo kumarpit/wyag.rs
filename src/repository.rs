@@ -9,7 +9,7 @@ pub struct Repository {
 }
 
 impl Repository {
-    fn new(worktree: &Path) -> Self {
+    pub fn new(worktree: &Path) -> Self {
         let gitdir = worktree.join(".gitrs");
         if worktree.exists() {
             if !worktree.is_dir() {
@@ -30,7 +30,7 @@ impl Repository {
             gitdir,
         };
 
-        let create_dirs = [
+        let did_create_dirs = [
             repository.repo_dir(&["branches"], true),
             repository.repo_dir(&["objects"], true),
             repository.repo_dir(&["refs", "tags"], true),
@@ -39,27 +39,25 @@ impl Repository {
         .iter()
         .all(|opt| opt.is_some());
 
-        if !create_dirs {
+        if !did_create_dirs {
             panic!("An error occurred when initializing the gitrs repository");
         }
 
-        File::create(
-            repository
+        repository.write_to_repo_file(
+            &repository
                 .repo_file(&["description"], false)
-                .expect("Could not create path"),
-        )
-        .unwrap_or_else(|e| panic!("Could not create file: {}", e))
-        .write_all(b"Unnamed repository; edit this file 'description' to name the repository.\n")
-        .expect("Could not write to file");
+                .expect("Could not make descrption file"),
+            b"Unamed repository; edit this file 'description' to name the repository.\n",
+        );
 
-        File::create(
-            repository
+        repository.write_to_repo_file(
+            &repository
                 .repo_file(&["HEAD"], false)
-                .expect("Could not create path"),
-        )
-        .unwrap_or_else(|e| panic!("Could not create file: {}", e))
-        .write_all(b"ref: refs/heads/master\n")
-        .expect("Could not write to file");
+                .expect("Could not make HEAD file"),
+            b"ref: refs/heads/master\n",
+        );
+
+        // TODO: Figure out config file management
 
         repository
     }
@@ -96,6 +94,13 @@ impl Repository {
         } else {
             None
         }
+    }
+
+    fn write_to_repo_file(&self, path: &PathBuf, content: &[u8]) {
+        File::create(path)
+            .unwrap_or_else(|e| panic!("Could not create file {}: {}", path.display(), e))
+            .write_all(content)
+            .unwrap_or_else(|e| panic!("Could not write to file {}: {}", path.display(), e));
     }
 }
 
