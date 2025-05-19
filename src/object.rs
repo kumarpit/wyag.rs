@@ -1,5 +1,6 @@
 // Definitions and methods for the various object types tracked by gitrs
 
+use core::panic;
 use std::fs::File;
 use std::io::{BufReader, Read};
 use std::str::from_utf8;
@@ -7,15 +8,70 @@ use std::str::from_utf8;
 use flate2::bufread::ZlibDecoder;
 use sha1::Digest;
 
+use crate::blob::Blob;
+use crate::commit::Commit;
 use crate::repository::Repository;
+use crate::tag::Tag;
+use crate::tree::Tree;
 
 pub trait Object {
-    fn init() -> Self;
     fn serialize(&self) -> &[u8];
     fn deserialize(data: &[u8]) -> Self;
 }
 
-pub fn object_read(repository: &Repository, sha: String) -> impl Object {
+pub enum GitrsObject {
+    BlobObject(Blob),
+    CommitObject(Commit),
+    TagObject(Tag),
+    TreeObject(Tree),
+}
+
+pub enum ObjectType {
+    Blob,
+    Commit,
+    Tag,
+    Tree,
+}
+
+// TODO: improve error handling everywhere
+#[derive(Debug)]
+pub enum ObjectError {}
+
+impl TryFrom<&str> for ObjectType {
+    type Error = ObjectError;
+
+    fn try_from(value: &str) -> Result<Self, Self::Error> {
+        match value {
+            "blob" => Ok(ObjectType::Blob),
+            "commit" => Ok(ObjectType::Commit),
+            "tag" => Ok(ObjectType::Tag),
+            "tree" => Ok(ObjectType::Tree),
+            _ => panic!("Unrecognized object type"),
+        }
+    }
+}
+
+impl GitrsObject {
+    fn serialize(&self) -> &[u8] {
+        match self {
+            GitrsObject::BlobObject(blob) => blob.serialize(),
+            GitrsObject::CommitObject(commit) => commit.serialize(),
+            GitrsObject::TagObject(tag) => tag.serialize(),
+            GitrsObject::TreeObject(tree) => tree.serialize(),
+        }
+    }
+
+    fn deserialize(data: &[u8], object_type: &str) -> Self {
+        match ObjectType::try_from(object_type).unwrap() {
+            ObjectType::Blob => Self::BlobObject(Blob::deserialize(data)),
+            ObjectType::Commit => Self::CommitObject(Commit::deserialize(data)),
+            ObjectType::Tag => Self::TagObject(Tag::deserialize(data)),
+            ObjectType::Tree => Self::TreeObject(Tree::deserialize(data)),
+        }
+    }
+}
+
+pub fn object_read(repository: &Repository, sha: String) -> GitrsObject {
     let path = repository
         .get_path_to_file(&["objects", &sha[..2], &sha[2..]])
         .expect("Object file does not exist");
@@ -57,11 +113,5 @@ pub fn object_read(repository: &Repository, sha: String) -> impl Object {
     let object_type = from_utf8(&decompressed_data[..object_type_index]).unwrap();
     let object_data = &decompressed_data[object_type_index + 1..];
 
-    match object_type {
-        "commit" => todo!(),
-        "tree" => todo!(),
-        "tag" => todo!(),
-        "blob" => todo!(),
-        _ => panic!("Unmatched object type"),
-    }
+    GitrsObject::deserialize(object_data, object_type)
 }

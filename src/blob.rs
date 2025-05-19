@@ -7,10 +7,6 @@ pub struct Blob {
 }
 
 impl Object for Blob {
-    fn init() -> Self {
-        todo!()
-    }
-
     fn serialize(&self) -> &[u8] {
         todo!()
     }
