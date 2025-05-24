@@ -3,15 +3,17 @@
 use crate::object::Object;
 
 pub struct Blob {
-    data: &'static [u8],
+    data: Vec<u8>,
 }
 
 impl Object for Blob {
     fn serialize(&self) -> &[u8] {
-        todo!()
+        &self.data[..]
     }
 
     fn deserialize(data: &[u8]) -> Self {
-        todo!()
+        Self {
+            data: data.to_vec(),
+        }
     }
 }

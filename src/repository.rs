@@ -1,8 +1,11 @@
 // Definitions and methods for the gitrs "repository"
 use core::panic;
-use std::fs::{self, File, canonicalize};
-use std::io::Write;
+use std::fs::{self, File, canonicalize, copy};
+use std::io::{BufReader, Cursor, Write};
 use std::path::{Path, PathBuf};
+
+use flate2::Compression;
+use flate2::write::ZlibEncoder;
 
 pub struct Repository {
     pub worktree: PathBuf,
@@ -69,11 +72,22 @@ impl Repository {
 
     // TODO: these should return Result instead and check for file existence here
     pub fn get_path_to_file(&self, paths: &[&str]) -> Option<PathBuf> {
-        self.repo_file(paths, false)
+        let path = self.repo_file(paths, false).unwrap();
+        if !path.exists() { None } else { Some(path) }
     }
 
     pub fn get_path_to_dir(&self, paths: &[&str]) -> Option<PathBuf> {
         self.repo_dir(paths, false)
+    }
+
+    pub fn upsert_file(&self, paths: &[&str], data: &Vec<u8>) -> Option<PathBuf> {
+        let path = self.repo_file(paths, true).expect("Could not create path");
+        let file = File::create(&path).expect("Could not create file");
+        let mut encoder = ZlibEncoder::new(file, Compression::default());
+        encoder
+            .write_all(&data)
+            .expect("Could not write compressed data");
+        Some(path)
     }
 
     /// Finds the root directory of the nearest gitrs repository by traversing parents of the

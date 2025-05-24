@@ -1,9 +1,5 @@
-mod blob;
-mod commit;
 mod object;
 mod repository;
-mod tag;
-mod tree;
 
 use clap::{Parser, Subcommand};
 use repository::Repository;
