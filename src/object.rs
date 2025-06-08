@@ -8,7 +8,7 @@ pub mod tree;
 use core::panic;
 use std::fs::File;
 use std::io::{BufReader, Read};
-use std::str::from_utf8;
+use std::str::{FromStr, from_utf8};
 
 use flate2::bufread::ZlibDecoder;
 use sha1::{Digest, Sha1};
@@ -19,6 +19,10 @@ use commit::Commit;
 use error::ObjectError;
 use tag::Tag;
 use tree::Tree;
+
+/////////////////////////////////////
+///Object Representation
+/////////////////////////////////////
 
 pub trait Object {
     fn serialize(&self) -> &[u8];
@@ -32,6 +36,7 @@ pub enum GitrsObject {
     TreeObject(Tree),
 }
 
+#[derive(Clone, Debug)]
 pub enum ObjectType {
     Blob,
     Commit,
@@ -68,8 +73,16 @@ impl TryFrom<&str> for ObjectType {
     }
 }
 
+impl FromStr for ObjectType {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        ObjectType::try_from(s).map_err(|e| e.to_string())
+    }
+}
+
 impl GitrsObject {
-    fn get_type(&self) -> ObjectType {
+    pub fn get_type(&self) -> ObjectType {
         match self {
             GitrsObject::BlobObject(_) => ObjectType::Blob,
             GitrsObject::CommitObject(_) => ObjectType::Commit,
@@ -78,7 +91,7 @@ impl GitrsObject {
         }
     }
 
-    fn serialize(&self) -> &[u8] {
+    pub fn serialize(&self) -> &[u8] {
         match self {
             GitrsObject::BlobObject(blob) => blob.serialize(),
             GitrsObject::CommitObject(commit) => commit.serialize(),
@@ -87,7 +100,7 @@ impl GitrsObject {
         }
     }
 
-    fn deserialize(data: &[u8], object_type: &str) -> Self {
+    pub fn deserialize(data: &[u8], object_type: &str) -> Self {
         match ObjectType::try_from(object_type).unwrap() {
             ObjectType::Blob => Self::BlobObject(Blob::deserialize(data)),
             ObjectType::Commit => Self::CommitObject(Commit::deserialize(data)),
@@ -96,6 +109,8 @@ impl GitrsObject {
         }
     }
 
+    /// Read and parse the object specified by `sha` in the given repository
+    // TODO : This can fail, should return a Result
     pub fn object_read(repository: &Repository, sha: String) -> Self {
         let path = repository
             .get_path_to_file(&["objects", &sha[..2], &sha[2..]])
@@ -137,6 +152,7 @@ impl GitrsObject {
         Self::deserialize(object_data, object_type)
     }
 
+    /// Write the current object to the repository
     pub fn object_write(&self, repository: &Repository) -> String {
         let data = self.serialize();
 
