@@ -4,6 +4,8 @@ mod repository;
 use clap::{Parser, Subcommand};
 use object::GitrsObject;
 use repository::Repository;
+use std::fs::File;
+use std::io::{BufReader, Read};
 use std::{env, path::Path};
 
 #[derive(Subcommand, Debug)]
@@ -13,6 +15,13 @@ enum Command {
     /// The path defaults to the directory the gitrs init command is invoked in
     Init {
         #[arg(default_value = ".")]
+        path: String,
+    },
+    /// Reads the given file (path relative to the repository), computes its hash,
+    /// and stores it in the repository
+    HashObject {
+        #[arg(value_parser)]
+        object_type: object::ObjectType,
         path: String,
     },
     /// Prints the raw contents of an object (uncompressed and without the git header) to the
@@ -42,11 +51,19 @@ fn main() {
                 Err(e) => println!("An error occurred initializing gitrs repository: {}", e),
             };
         }
+        Command::HashObject { object_type, path } => {
+            let file = File::open(path).expect("Could not open file");
+            let mut data = Vec::new();
+            let _size = BufReader::new(file)
+                .read_to_end(&mut data)
+                .expect("Could not read file");
+            let repository =
+                Repository::find_repository(&env::current_dir().unwrap().as_path()).unwrap();
+            GitrsObject::write(&repository, data.as_slice(), object_type);
+        }
         Command::CatFile { object_type, hash } => {
             let repository =
-                // TODO: encode test directory in a config file or something
-                Repository::find_repository(&env::current_dir().unwrap().join("test").as_path())
-                    .unwrap();
+                Repository::find_repository(&env::current_dir().unwrap().as_path()).unwrap();
             let obj = GitrsObject::object_read(&repository, hash);
             println!("{}", hex::encode(obj.serialize()));
         }

@@ -10,4 +10,8 @@ impl Object for Commit {
     fn deserialize(data: &[u8]) -> Self {
         todo!()
     }
+
+    fn init(_data: &[u8]) -> Self {
+        Self {}
+    }
 }

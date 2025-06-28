@@ -25,6 +25,7 @@ use tree::Tree;
 /////////////////////////////////////
 
 pub trait Object {
+    fn init(data: &[u8]) -> Self;
     fn serialize(&self) -> &[u8];
     fn deserialize(data: &[u8]) -> Self;
 }
@@ -91,6 +92,9 @@ impl GitrsObject {
         }
     }
 
+    // Objects are stored in the following format:
+    // <TYPE><0x20><SIZE><0x00><CONTENTS>
+    // The header part, and the contents, are then compressed using Zlib
     pub fn serialize(&self) -> &[u8] {
         match self {
             GitrsObject::BlobObject(blob) => blob.serialize(),
@@ -109,6 +113,15 @@ impl GitrsObject {
         }
     }
 
+    pub fn write(repository: &Repository, data: &[u8], object_type: ObjectType) -> String {
+        match object_type {
+            ObjectType::Blob => Self::BlobObject(Blob::init(data)).object_write(repository),
+            ObjectType::Commit => Self::CommitObject(Commit::init(data)).object_write(repository),
+            ObjectType::Tag => Self::TagObject(Tag::init(data)).object_write(repository),
+            ObjectType::Tree => Self::TreeObject(Tree::init(data)).object_write(repository),
+        }
+    }
+
     /// Read and parse the object specified by `sha` in the given repository
     // TODO : This can fail, should return a Result
     pub fn object_read(repository: &Repository, sha: String) -> Self {
@@ -116,6 +129,7 @@ impl GitrsObject {
             .get_path_to_file(&["objects", &sha[..2], &sha[2..]])
             .expect("Object file does not exist");
 
+        // Decompressing object (header + contents)
         let file = File::open(path).expect("Could not open file");
         let buf_reader = BufReader::new(file);
         let mut decoder = ZlibDecoder::new(buf_reader);
@@ -124,31 +138,33 @@ impl GitrsObject {
             .read_to_end(&mut decompressed_data)
             .expect("Failed to decompress data");
 
+        // Extract the object type
         let obj_type_end_idx = decompressed_data
             .iter()
             .position(|&byte| byte == b' ')
             .ok_or("Malformed object: Missing space in header")
             .unwrap();
+        let object_type = from_utf8(&decompressed_data[..obj_type_end_idx]).unwrap();
 
-        let obj_size_end_idx = decompressed_data[obj_type_end_idx..]
+        // Extract the object size
+        let obj_size_end_idx = decompressed_data[obj_type_end_idx + 1..]
             .iter()
             .position(|&b| b == 0)
             .ok_or("Malformed object: Missing null byte in header")
             .unwrap()
             + obj_type_end_idx;
 
-        let object_size: usize = from_utf8(&decompressed_data[obj_type_end_idx..obj_size_end_idx])
-            .unwrap()
-            .parse()
-            .unwrap();
+        let object_size: usize =
+            from_utf8(&decompressed_data[obj_type_end_idx + 1..obj_size_end_idx])
+                .unwrap()
+                .parse()
+                .unwrap();
 
-        if object_size != decompressed_data.len() - obj_size_end_idx - 1 {
+        if object_size != decompressed_data.len() - (obj_size_end_idx + 1) {
             panic!("Malformed object {}: Bad length", sha);
         }
 
-        let object_type = from_utf8(&decompressed_data[..obj_type_end_idx]).unwrap();
         let object_data = &decompressed_data[obj_type_end_idx + 1..];
-
         Self::deserialize(object_data, object_type)
     }
 
@@ -164,7 +180,7 @@ impl GitrsObject {
         let sha = {
             let mut hasher = Sha1::new();
             hasher.update(&payload);
-            hex::encode(hasher.finalize())
+            hex::encode(hasher.finalize()) // SHA-1 produces a 160-bit hash
         };
 
         repository

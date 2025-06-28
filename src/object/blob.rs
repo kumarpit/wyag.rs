@@ -16,4 +16,10 @@ impl Object for Blob {
             data: data.to_vec(),
         }
     }
+
+    fn init(data: &[u8]) -> Self {
+        Self {
+            data: data.to_vec(),
+        }
+    }
 }
