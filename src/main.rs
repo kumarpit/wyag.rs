@@ -32,6 +32,11 @@ enum Command {
         object_type: object::ObjectType,
         hash: String,
     },
+    Log {
+        // Logs commits on the current branch
+        #[arg(default_value = "HEAD")]
+        commit: String,
+    },
 }
 
 /// A light-weight git clone written in Rust
@@ -70,6 +75,17 @@ fn main() {
 
             print!("Object contents");
             GitrsObject::dump(&obj.serialize());
+        }
+        Command::Log { commit } => {
+            let repository =
+                Repository::find_repository(&env::current_dir().unwrap().as_path()).unwrap();
+            if let GitrsObject::CommitObject(commit_obj) =
+                GitrsObject::object_read(&repository, commit, object::ObjectType::Commit)
+            {
+                println!("{}", commit_obj.message());
+            } else {
+                panic!("Expected commit");
+            }
         }
     };
 }

@@ -15,3 +15,13 @@ impl Object for Commit {
         }
     }
 }
+
+impl Commit {
+    pub fn short(sha: &str) -> &str {
+        &sha[0..7]
+    }
+
+    pub fn message(&self) -> &str {
+        self.kvlm.get_message()
+    }
+}

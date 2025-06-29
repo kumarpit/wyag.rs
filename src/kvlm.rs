@@ -54,6 +54,15 @@ impl Kvlm {
         output
     }
 
+    pub fn get_message(&self) -> &str {
+        self.data
+            .get(&None)
+            .expect("Each kvlm must specify a message")
+            .first()
+            .expect("Cannot have an empty message")
+            .as_str()
+    }
+
     fn parse(raw_data: &[u8]) -> IndexMap<Option<String>, Vec<String>> {
         let mut pos = 0;
         let mut result: IndexMap<Option<String>, Vec<String>> = IndexMap::new();
@@ -84,8 +93,8 @@ impl Kvlm {
                     .map(|i| i + end + 1)
                     .expect("Expected newline");
 
+                end = newline_idx;
                 if raw_data.get(newline_idx + 1) != Some(&b' ') {
-                    end = newline_idx;
                     break;
                 }
                 end = newline_idx;
