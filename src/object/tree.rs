@@ -46,11 +46,10 @@ impl Object for Tree {
 
     fn deserialize(data: &[u8]) -> Self {
         let mut cursor = Cursor::new(data);
-        let pos = cursor.position() as usize;
         let len = cursor.get_ref().len();
 
         let mut records = Vec::new();
-        while pos < len {
+        while (cursor.position() as usize) < len {
             let leaf = Leaf::parse(&mut cursor, data);
             records.push(leaf);
         }
