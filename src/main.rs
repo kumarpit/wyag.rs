@@ -4,6 +4,7 @@ mod repository;
 
 use clap::{Parser, Subcommand};
 use object::GitrsObject;
+use object::commit::Commit;
 use repository::Repository;
 use std::fs::File;
 use std::io::{BufReader, Read};
@@ -71,7 +72,7 @@ fn main() {
         Command::CatFile { object_type, hash } => {
             let repository =
                 Repository::find_repository(&env::current_dir().unwrap().as_path()).unwrap();
-            let obj = GitrsObject::object_read(&repository, hash, object_type);
+            let obj = GitrsObject::object_read(&repository, &hash, object_type);
 
             print!("Object contents");
             GitrsObject::dump(&obj.serialize());
@@ -80,9 +81,9 @@ fn main() {
             let repository =
                 Repository::find_repository(&env::current_dir().unwrap().as_path()).unwrap();
             if let GitrsObject::CommitObject(commit_obj) =
-                GitrsObject::object_read(&repository, commit, object::ObjectType::Commit)
+                GitrsObject::object_read(&repository, &commit, object::ObjectType::Commit)
             {
-                println!("{}", commit_obj.message());
+                println!("[{}] {}", Commit::short(&commit), commit_obj.message());
             } else {
                 panic!("Expected commit");
             }
