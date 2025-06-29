@@ -21,7 +21,7 @@ enum Command {
     /// Reads the given file (path relative to the repository), computes its hash,
     /// and stores it in the repository
     HashObject {
-        #[arg(value_parser)]
+        #[arg(value_parser)] // NOTE: Target type must implement FromStr
         object_type: object::ObjectType,
         path: String,
     },
@@ -60,14 +60,15 @@ fn main() {
                 .expect("Could not read file");
             let repository =
                 Repository::find_repository(&env::current_dir().unwrap().as_path()).unwrap();
-            GitrsObject::write(&repository, data.as_slice(), object_type);
+            let hash = GitrsObject::write(&repository, data.as_slice(), object_type);
+            println!("{}", hash);
         }
         Command::CatFile { object_type, hash } => {
             let repository =
                 Repository::find_repository(&env::current_dir().unwrap().as_path()).unwrap();
-            let obj = GitrsObject::object_read(&repository, hash);
+            let obj = GitrsObject::object_read(&repository, hash, object_type);
 
-            println!("Object contents");
+            print!("Object contents");
             GitrsObject::dump(&obj.serialize());
         }
     };

@@ -92,7 +92,7 @@ impl GitrsObject {
     }
 
     // Objects are stored in the following format:
-    // <TYPE><0x20><SIZE><0x00><CONTENTS>
+    // <TYPE>0x20<SIZE>0x00<CONTENTS>
     // The header part, and the contents, are then compressed using Zlib
     pub fn serialize(&self) -> Vec<u8> {
         match self {
@@ -118,7 +118,7 @@ impl GitrsObject {
 
     /// Read and parse the object specified by `sha` in the given repository
     // TODO : This can fail, should return a Result
-    pub fn object_read(repository: &Repository, sha: String) -> Self {
+    pub fn object_read(repository: &Repository, sha: String, object_type: ObjectType) -> Self {
         let path = repository
             .get_path_to_file(&["objects", &sha[..2], &sha[2..]])
             .expect("Object file does not exist");
@@ -133,7 +133,7 @@ impl GitrsObject {
             .expect("Failed to decompress data");
 
         // hex dump
-        println!("Raw object");
+        print!("Raw object");
         Self::dump(&decompressed_data);
 
         // Extract the object type
@@ -142,7 +142,16 @@ impl GitrsObject {
             .position(|&byte| byte == b' ')
             .ok_or("Malformed object: Missing space in header")
             .unwrap();
-        let object_type = from_utf8(&decompressed_data[..obj_type_end_idx]).unwrap();
+
+        let object_type_str = from_utf8(&decompressed_data[..obj_type_end_idx]).unwrap();
+        if object_type_str != object_type.to_string() {
+            panic!(
+                "Malformed object {}: Expected type {} got {}",
+                sha,
+                object_type.to_string(),
+                object_type_str
+            );
+        }
 
         // Extract the object size
         let obj_size_end_idx = decompressed_data[obj_type_end_idx..]
@@ -167,7 +176,7 @@ impl GitrsObject {
         }
 
         let object_data = &decompressed_data[obj_size_end_idx + 1..];
-        Self::deserialize(object_data, object_type)
+        Self::deserialize(object_data, object_type.to_string().as_str())
     }
 
     /// Write the current object to the repository
