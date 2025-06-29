@@ -18,7 +18,7 @@ impl Kvlm {
         }
     }
 
-    pub fn deserialize(&self) -> Vec<u8> {
+    pub fn serialize(&self) -> Vec<u8> {
         let mut output = Vec::new();
 
         for (key, values) in &self.data {

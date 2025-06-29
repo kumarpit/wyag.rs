@@ -72,7 +72,7 @@ fn main() {
         Command::CatFile { object_type, hash } => {
             let repository =
                 Repository::find_repository(&env::current_dir().unwrap().as_path()).unwrap();
-            let obj = GitrsObject::object_read(&repository, &hash, object_type);
+            let mut obj = GitrsObject::object_read(&repository, &hash, object_type);
 
             print!("Object contents");
             GitrsObject::dump(&obj.serialize());

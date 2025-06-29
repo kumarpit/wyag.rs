@@ -7,7 +7,7 @@ pub struct Blob {
 }
 
 impl Object for Blob {
-    fn serialize(&self) -> Vec<u8> {
+    fn serialize(&mut self) -> Vec<u8> {
         self.data.clone()
     }
 

@@ -5,8 +5,8 @@ pub struct Commit {
 }
 
 impl Object for Commit {
-    fn serialize(&self) -> Vec<u8> {
-        self.kvlm.deserialize()
+    fn serialize(&mut self) -> Vec<u8> {
+        self.kvlm.serialize()
     }
 
     fn deserialize(data: &[u8]) -> Self {

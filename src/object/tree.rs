@@ -16,8 +16,32 @@ pub struct Leaf {
 }
 
 impl Object for Tree {
-    fn serialize(&self) -> Vec<u8> {
-        todo!()
+    fn serialize(&mut self) -> Vec<u8> {
+        // Sort leaf nodes
+        self.records.sort_by_key(|leaf| {
+            let is_dir = !leaf.file_mode.starts_with("10");
+            let mut file_path_str = leaf.path.to_string_lossy().to_string();
+            if is_dir {
+                file_path_str.push('/');
+            }
+
+            file_path_str
+        });
+
+        let mut output = Vec::new();
+        self.records.iter().for_each(|leaf| {
+            output.extend_from_slice(
+                format!(
+                    "{}\x20{}\x00{}",
+                    leaf.file_mode,
+                    leaf.path.to_string_lossy().to_string(),
+                    leaf.hash
+                )
+                .as_bytes(),
+            );
+        });
+
+        output
     }
 
     fn deserialize(data: &[u8]) -> Self {
@@ -46,10 +70,10 @@ impl Leaf {
             .ok_or("Malformed leaf record: Missing space")
             .unwrap()
             + curr_pos;
-        // TODO: normalize mode if its only 5 bytes
         let mut mode = String::from_utf8_lossy(&data[curr_pos..space_idx]).into_owned();
 
         println!("size for mode: {}", space_idx - curr_pos);
+        // Normalize to 6 bytes
         if space_idx - curr_pos == 5 {
             mode.insert(0, '0');
         }

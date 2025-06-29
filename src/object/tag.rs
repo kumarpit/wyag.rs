@@ -3,7 +3,7 @@ use crate::object::Object;
 pub struct Tag {}
 
 impl Object for Tag {
-    fn serialize(&self) -> Vec<u8> {
+    fn serialize(&mut self) -> Vec<u8> {
         todo!()
     }
 

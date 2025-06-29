@@ -25,7 +25,7 @@ use tree::Tree;
 /////////////////////////////////////
 
 pub trait Object {
-    fn serialize(&self) -> Vec<u8>;
+    fn serialize(&mut self) -> Vec<u8>;
     fn deserialize(data: &[u8]) -> Self;
 }
 
@@ -94,7 +94,7 @@ impl GitrsObject {
     // Objects are stored in the following format:
     // <TYPE>0x20<SIZE>0x00<CONTENTS>
     // The header part, and the contents, are then compressed using Zlib
-    pub fn serialize(&self) -> Vec<u8> {
+    pub fn serialize(&mut self) -> Vec<u8> {
         match self {
             GitrsObject::BlobObject(blob) => blob.serialize(),
             GitrsObject::CommitObject(commit) => commit.serialize(),
@@ -180,7 +180,7 @@ impl GitrsObject {
     }
 
     /// Write the current object to the repository
-    pub fn object_write(&self, repository: &Repository) -> String {
+    pub fn object_write(&mut self, repository: &Repository) -> String {
         let data = self.serialize();
 
         let header = format!("{}\x20{}\x00", self.get_type(), data.len());
