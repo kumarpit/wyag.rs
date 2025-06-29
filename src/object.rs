@@ -138,6 +138,10 @@ impl GitrsObject {
             .read_to_end(&mut decompressed_data)
             .expect("Failed to decompress data");
 
+        // hex dump
+        println!("Raw object");
+        Self::dump(&decompressed_data);
+
         // Extract the object type
         let obj_type_end_idx = decompressed_data
             .iter()
@@ -147,7 +151,7 @@ impl GitrsObject {
         let object_type = from_utf8(&decompressed_data[..obj_type_end_idx]).unwrap();
 
         // Extract the object size
-        let obj_size_end_idx = decompressed_data[obj_type_end_idx + 1..]
+        let obj_size_end_idx = decompressed_data[obj_type_end_idx..]
             .iter()
             .position(|&b| b == 0)
             .ok_or("Malformed object: Missing null byte in header")
@@ -160,11 +164,15 @@ impl GitrsObject {
                 .parse()
                 .unwrap();
 
-        if object_size != decompressed_data.len() - (obj_size_end_idx + 1) {
-            panic!("Malformed object {}: Bad length", sha);
+        let expected_length = decompressed_data.len() - (obj_size_end_idx + 1);
+        if object_size != expected_length {
+            panic!(
+                "Malformed object {}: Bad length - actual {} expected {}",
+                sha, object_size, expected_length
+            );
         }
 
-        let object_data = &decompressed_data[obj_type_end_idx + 1..];
+        let object_data = &decompressed_data[obj_size_end_idx + 1..];
         Self::deserialize(object_data, object_type)
     }
 
@@ -172,7 +180,7 @@ impl GitrsObject {
     pub fn object_write(&self, repository: &Repository) -> String {
         let data = self.serialize();
 
-        let header = format!("{} {}\x00", self.get_type(), data.len());
+        let header = format!("{}\x20{}\x00", self.get_type(), data.len());
         let mut payload = header.into_bytes();
         payload.extend(data);
 
@@ -188,5 +196,16 @@ impl GitrsObject {
             .expect("Could not write object file");
 
         sha
+    }
+
+    // Hex dump
+    pub fn dump(buf: &Vec<u8>) {
+        for (i, byte) in buf.iter().enumerate() {
+            if i % 16 == 0 {
+                print!("\n{:08x}: ", i);
+            }
+            print!("{:02x} ", byte);
+        }
+        println!();
     }
 }

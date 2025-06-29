@@ -65,7 +65,9 @@ fn main() {
             let repository =
                 Repository::find_repository(&env::current_dir().unwrap().as_path()).unwrap();
             let obj = GitrsObject::object_read(&repository, hash);
-            println!("{}", hex::encode(obj.serialize()));
+
+            println!("Object contents");
+            GitrsObject::dump(&obj.serialize().to_vec());
         }
     };
 }
