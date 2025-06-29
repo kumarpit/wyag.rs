@@ -1,3 +1,4 @@
+mod kvlm;
 mod object;
 mod repository;
 
