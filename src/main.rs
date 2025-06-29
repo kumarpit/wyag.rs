@@ -68,7 +68,7 @@ fn main() {
             let obj = GitrsObject::object_read(&repository, hash);
 
             println!("Object contents");
-            GitrsObject::dump(&obj.serialize().to_vec());
+            GitrsObject::dump(&obj.serialize());
         }
     };
 }

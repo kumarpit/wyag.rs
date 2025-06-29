@@ -1,17 +1,17 @@
-use crate::object::Object;
+use crate::{kvlm::Kvlm, object::Object};
 
-pub struct Commit {}
+pub struct Commit {
+    kvlm: Kvlm,
+}
 
 impl Object for Commit {
-    fn serialize(&self) -> &[u8] {
-        todo!()
+    fn serialize(&self) -> Vec<u8> {
+        self.kvlm.deserialize()
     }
 
     fn deserialize(data: &[u8]) -> Self {
-        todo!()
-    }
-
-    fn init(_data: &[u8]) -> Self {
-        Self {}
+        Self {
+            kvlm: Kvlm::new(data),
+        }
     }
 }

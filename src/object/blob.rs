@@ -7,17 +7,11 @@ pub struct Blob {
 }
 
 impl Object for Blob {
-    fn serialize(&self) -> &[u8] {
-        &self.data[..]
+    fn serialize(&self) -> Vec<u8> {
+        self.data.clone()
     }
 
     fn deserialize(data: &[u8]) -> Self {
-        Self {
-            data: data.to_vec(),
-        }
-    }
-
-    fn init(data: &[u8]) -> Self {
         Self {
             data: data.to_vec(),
         }

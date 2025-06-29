@@ -54,37 +54,37 @@ impl Kvlm {
         output
     }
 
-    fn parse(raw: &[u8]) -> IndexMap<Option<String>, Vec<String>> {
+    fn parse(raw_data: &[u8]) -> IndexMap<Option<String>, Vec<String>> {
         let mut pos = 0;
         let mut result: IndexMap<Option<String>, Vec<String>> = IndexMap::new();
 
-        while pos < raw.len() {
+        while pos < raw_data.len() {
             // Check for the blank line separator (`\n`) -> message body
-            if raw[pos] == b'\n' {
-                let message = String::from_utf8_lossy(&raw[pos + 1..]).into_owned();
+            if raw_data[pos] == b'\n' {
+                let message = String::from_utf8_lossy(&raw_data[pos + 1..]).into_owned();
                 result.insert(None, vec![message]);
                 break;
             }
 
             // Parse key
-            let space_idx = raw[pos..]
+            let space_idx = raw_data[pos..]
                 .iter()
                 .position(|&b| b == b' ')
                 .map(|i| i + pos)
                 .expect("Expected space after key");
 
-            let key = String::from_utf8_lossy(&raw[pos..space_idx]).into_owned();
+            let key = String::from_utf8_lossy(&raw_data[pos..space_idx]).into_owned();
 
             // Find the end of the value, including continuation lines
             let mut end = space_idx;
             loop {
-                let newline_idx = raw[end + 1..]
+                let newline_idx = raw_data[end + 1..]
                     .iter()
                     .position(|&b| b == b'\n')
                     .map(|i| i + end + 1)
                     .expect("Expected newline");
 
-                if raw.get(newline_idx + 1) != Some(&b' ') {
+                if raw_data.get(newline_idx + 1) != Some(&b' ') {
                     end = newline_idx;
                     break;
                 }
@@ -92,8 +92,8 @@ impl Kvlm {
             }
 
             // Extract and de-indent continuation lines
-            let value_raw = &raw[space_idx + 1..=end];
-            let value = String::from_utf8_lossy(value_raw)
+            let value_raw_data = &raw_data[space_idx + 1..=end];
+            let value = String::from_utf8_lossy(value_raw_data)
                 .replace("\n ", "\n")
                 .to_string();
 
