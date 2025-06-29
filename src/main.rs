@@ -78,6 +78,8 @@ fn main() {
             GitrsObject::dump(&obj.serialize());
         }
         Command::Log { commit } => {
+            // TODO: list all commits, also default the commit to HEAD rather than using the actual
+            // hash
             let repository =
                 Repository::find_repository(&env::current_dir().unwrap().as_path()).unwrap();
             if let GitrsObject::CommitObject(commit_obj) =
