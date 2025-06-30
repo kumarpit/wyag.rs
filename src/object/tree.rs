@@ -5,14 +5,16 @@ use std::{
     str::FromStr,
 };
 
+use super::ObjectType;
+
 pub struct Tree {
-    records: Vec<Leaf>,
+    pub records: Vec<Leaf>,
 }
 
 pub struct Leaf {
-    file_mode: String,
-    path: PathBuf, // relative to worktree
-    hash: String,
+    pub file_mode: String,
+    pub path: PathBuf, // relative to worktree
+    pub hash: String,
 }
 
 impl Object for Tree {
@@ -99,6 +101,22 @@ impl Leaf {
             file_mode: mode.to_string().to_owned(),
             path: PathBuf::from_str(&path).expect("Couldn't create PathBuf"),
             hash,
+        }
+    }
+
+    pub fn get_type_from_mode(file_mode: &str) -> ObjectType {
+        let file_type;
+        if file_mode.len() == 5 {
+            file_type = &file_mode[..1]
+        } else {
+            file_type = &file_mode[..2]
+        }
+
+        match file_type {
+            "4" | "04" => ObjectType::Tree,
+            "10" | "12" => ObjectType::Blob,
+            "16" => ObjectType::Commit,
+            _ => panic!("Weird leaf mode: {}", file_mode),
         }
     }
 }

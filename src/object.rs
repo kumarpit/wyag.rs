@@ -201,6 +201,9 @@ impl GitrsObject {
         sha
     }
 
+    // TODO: should return the sha hash for an object given a ref
+    //pub fn find() {}
+
     // Hex dump
     pub fn dump(buf: &Vec<u8>) {
         for (i, byte) in buf.iter().enumerate() {

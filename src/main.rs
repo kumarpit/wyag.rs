@@ -1,10 +1,12 @@
 mod kvlm;
+mod macros;
 mod object;
 mod repository;
 
 use clap::{Parser, Subcommand};
 use object::GitrsObject;
 use object::commit::Commit;
+use object::tree::Leaf;
 use repository::Repository;
 use std::fs::File;
 use std::io::{BufReader, Read};
@@ -39,6 +41,8 @@ enum Command {
         commit: String,
     },
     LsTree {
+        #[arg(short = 'r', long = "recursive")]
+        recursive: bool,
         tree: String,
     },
 }
@@ -49,13 +53,6 @@ enum Command {
 struct Gitrs {
     #[command(subcommand)]
     cmd: Command,
-}
-
-macro_rules! find_repository {
-    ($name:ident, $body:block) => {{
-        let $name = Repository::find_repository(&env::current_dir().unwrap().as_path()).unwrap();
-        $body
-    }};
 }
 
 fn main() {
@@ -74,13 +71,14 @@ fn main() {
             let _size = BufReader::new(file)
                 .read_to_end(&mut data)
                 .expect("Could not read file");
-            find_repository!(repository, {
+
+            macros::find_repository!(repository, {
                 let hash = GitrsObject::write(&repository, data.as_slice(), object_type);
                 println!("{}", hash);
             })
         }
         Command::CatFile { object_type, hash } => {
-            find_repository!(repository, {
+            macros::find_repository!(repository, {
                 let mut obj = GitrsObject::read(&repository, &hash, object_type);
                 print!("Object contents");
                 GitrsObject::dump(&obj.serialize());
@@ -90,7 +88,7 @@ fn main() {
             // TODO: list all commits, also default the commit to HEAD rather than using the actual
             // hash
             // This can be achieved using the `object_find` method
-            find_repository!(repository, {
+            macros::find_repository!(repository, {
                 if let GitrsObject::CommitObject(commit_obj) =
                     GitrsObject::read(&repository, &commit, object::ObjectType::Commit)
                 {
@@ -100,11 +98,16 @@ fn main() {
                 }
             })
         }
-        Command::LsTree { tree } => {
-            find_repository!(repository, {
+        Command::LsTree { recursive, tree } => {
+            macros::find_repository!(repository, {
                 if let GitrsObject::TreeObject(tree_obj) =
                     GitrsObject::read(&repository, &tree, object::ObjectType::Tree)
                 {
+                    // TODO : fix formatting of the lst tree message
+                    tree_obj.records.iter().for_each(|leaf| {
+                        let obj_type = Leaf::get_type_from_mode(&leaf.file_mode);
+                        println!("Found {} object", &obj_type.to_string());
+                    })
                 } else {
                     panic!("Expected a tree");
                 }
