@@ -118,7 +118,7 @@ impl GitrsObject {
 
     /// Read and parse the object specified by `sha` in the given repository
     // TODO : This can fail, should return a Result
-    pub fn object_read(repository: &Repository, sha: &str, object_type: ObjectType) -> Self {
+    pub fn read(repository: &Repository, sha: &str, object_type: ObjectType) -> Self {
         let path = repository
             .get_path_to_file(&["objects", &sha[..2], &sha[2..]])
             .expect("Object file does not exist");

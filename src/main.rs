@@ -51,7 +51,7 @@ struct Gitrs {
     cmd: Command,
 }
 
-macro_rules! with_repository {
+macro_rules! find_repository {
     ($name:ident, $body:block) => {{
         let $name = Repository::find_repository(&env::current_dir().unwrap().as_path()).unwrap();
         $body
@@ -74,14 +74,14 @@ fn main() {
             let _size = BufReader::new(file)
                 .read_to_end(&mut data)
                 .expect("Could not read file");
-            with_repository!(repository, {
+            find_repository!(repository, {
                 let hash = GitrsObject::write(&repository, data.as_slice(), object_type);
                 println!("{}", hash);
             })
         }
         Command::CatFile { object_type, hash } => {
-            with_repository!(repository, {
-                let mut obj = GitrsObject::object_read(&repository, &hash, object_type);
+            find_repository!(repository, {
+                let mut obj = GitrsObject::read(&repository, &hash, object_type);
                 print!("Object contents");
                 GitrsObject::dump(&obj.serialize());
             })
@@ -90,9 +90,9 @@ fn main() {
             // TODO: list all commits, also default the commit to HEAD rather than using the actual
             // hash
             // This can be achieved using the `object_find` method
-            with_repository!(repository, {
+            find_repository!(repository, {
                 if let GitrsObject::CommitObject(commit_obj) =
-                    GitrsObject::object_read(&repository, &commit, object::ObjectType::Commit)
+                    GitrsObject::read(&repository, &commit, object::ObjectType::Commit)
                 {
                     println!("[{}] {}", Commit::short(&commit), commit_obj.message());
                 } else {
@@ -101,9 +101,9 @@ fn main() {
             })
         }
         Command::LsTree { tree } => {
-            with_repository!(repository, {
+            find_repository!(repository, {
                 if let GitrsObject::TreeObject(tree_obj) =
-                    GitrsObject::object_read(&repository, &tree, object::ObjectType::Tree)
+                    GitrsObject::read(&repository, &tree, object::ObjectType::Tree)
                 {
                 } else {
                     panic!("Expected a tree");
