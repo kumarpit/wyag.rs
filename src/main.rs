@@ -38,6 +38,9 @@ enum Command {
         #[arg(default_value = "HEAD")]
         commit: String,
     },
+    LsTree {
+        tree: String,
+    },
 }
 
 /// A light-weight git clone written in Rust
@@ -46,6 +49,13 @@ enum Command {
 struct Gitrs {
     #[command(subcommand)]
     cmd: Command,
+}
+
+macro_rules! with_repository {
+    ($name:ident, $body:block) => {{
+        let $name = Repository::find_repository(&env::current_dir().unwrap().as_path()).unwrap();
+        $body
+    }};
 }
 
 fn main() {
@@ -64,31 +74,41 @@ fn main() {
             let _size = BufReader::new(file)
                 .read_to_end(&mut data)
                 .expect("Could not read file");
-            let repository =
-                Repository::find_repository(&env::current_dir().unwrap().as_path()).unwrap();
-            let hash = GitrsObject::write(&repository, data.as_slice(), object_type);
-            println!("{}", hash);
+            with_repository!(repository, {
+                let hash = GitrsObject::write(&repository, data.as_slice(), object_type);
+                println!("{}", hash);
+            })
         }
         Command::CatFile { object_type, hash } => {
-            let repository =
-                Repository::find_repository(&env::current_dir().unwrap().as_path()).unwrap();
-            let mut obj = GitrsObject::object_read(&repository, &hash, object_type);
-
-            print!("Object contents");
-            GitrsObject::dump(&obj.serialize());
+            with_repository!(repository, {
+                let mut obj = GitrsObject::object_read(&repository, &hash, object_type);
+                print!("Object contents");
+                GitrsObject::dump(&obj.serialize());
+            })
         }
         Command::Log { commit } => {
             // TODO: list all commits, also default the commit to HEAD rather than using the actual
             // hash
-            let repository =
-                Repository::find_repository(&env::current_dir().unwrap().as_path()).unwrap();
-            if let GitrsObject::CommitObject(commit_obj) =
-                GitrsObject::object_read(&repository, &commit, object::ObjectType::Commit)
-            {
-                println!("[{}] {}", Commit::short(&commit), commit_obj.message());
-            } else {
-                panic!("Expected commit");
-            }
+            // This can be achieved using the `object_find` method
+            with_repository!(repository, {
+                if let GitrsObject::CommitObject(commit_obj) =
+                    GitrsObject::object_read(&repository, &commit, object::ObjectType::Commit)
+                {
+                    println!("[{}] {}", Commit::short(&commit), commit_obj.message());
+                } else {
+                    panic!("Expected commit");
+                }
+            })
+        }
+        Command::LsTree { tree } => {
+            with_repository!(repository, {
+                if let GitrsObject::TreeObject(tree_obj) =
+                    GitrsObject::object_read(&repository, &tree, object::ObjectType::Tree)
+                {
+                } else {
+                    panic!("Expected a tree");
+                }
+            })
         }
     };
 }
