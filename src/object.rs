@@ -10,6 +10,7 @@ use std::fs::File;
 use std::io::{BufReader, Read};
 use std::str::{FromStr, from_utf8};
 
+use anyhow::anyhow;
 use flate2::bufread::ZlibDecoder;
 use sha1::{Digest, Sha1};
 
@@ -117,20 +118,17 @@ impl GitrsObject {
     }
 
     /// Read and parse the object specified by `sha` in the given repository
-    // TODO : This can fail, should return a Result
-    pub fn read(repository: &Repository, sha: &str, object_type: ObjectType) -> Self {
+    pub fn read(repository: &Repository, sha: &str) -> anyhow::Result<Self> {
         let path = repository
             .get_path_to_file(&["objects", &sha[..2], &sha[2..]])
-            .expect("Object file does not exist");
+            .ok_or_else(|| anyhow!("Object file does not exist"))?;
 
         // Decompressing object (header + contents)
         let file = File::open(path).expect("Could not open file");
         let buf_reader = BufReader::new(file);
         let mut decoder = ZlibDecoder::new(buf_reader);
         let mut decompressed_data = Vec::new();
-        decoder
-            .read_to_end(&mut decompressed_data)
-            .expect("Failed to decompress data");
+        decoder.read_to_end(&mut decompressed_data)?;
 
         // hex dump
         print!("Raw object");
@@ -140,43 +138,33 @@ impl GitrsObject {
         let obj_type_end_idx = decompressed_data
             .iter()
             .position(|&byte| byte == b' ')
-            .ok_or("Malformed object: Missing space in header")
-            .unwrap();
+            .ok_or_else(|| anyhow!("Malformed object: Missing space in header"))?;
 
-        let object_type_str = from_utf8(&decompressed_data[..obj_type_end_idx]).unwrap();
-        if object_type_str != object_type.to_string() {
-            panic!(
-                "Malformed object {}: Expected type {} got {}",
-                sha,
-                object_type.to_string(),
-                object_type_str
-            );
-        }
+        let object_type_str = from_utf8(&decompressed_data[..obj_type_end_idx])?;
 
         // Extract the object size
         let obj_size_end_idx = decompressed_data[obj_type_end_idx..]
             .iter()
             .position(|&b| b == 0)
-            .ok_or("Malformed object: Missing null byte in header")
-            .unwrap()
+            .ok_or_else(|| anyhow!("Malformed object: Missing null byte in header"))?
             + obj_type_end_idx;
 
         let object_size: usize =
-            from_utf8(&decompressed_data[obj_type_end_idx + 1..obj_size_end_idx])
-                .unwrap()
-                .parse()
-                .unwrap();
+            from_utf8(&decompressed_data[obj_type_end_idx + 1..obj_size_end_idx])?.parse()?;
 
         let expected_length = decompressed_data.len() - (obj_size_end_idx + 1);
-        if object_size != expected_length {
-            panic!(
-                "Malformed object {}: Bad length - actual {} expected {}",
-                sha, object_size, expected_length
-            );
-        }
 
-        let object_data = &decompressed_data[obj_size_end_idx + 1..];
-        Self::deserialize(object_data, object_type.to_string().as_str())
+        if object_size == expected_length {
+            let object_data = &decompressed_data[obj_size_end_idx + 1..];
+            Ok(Self::deserialize(object_data, object_type_str))
+        } else {
+            Err(anyhow!(
+                "Malformed object {}: Bad length - actual {} expected {}",
+                sha,
+                object_size,
+                expected_length
+            ))
+        }
     }
 
     /// Write the current object to the repository

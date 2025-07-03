@@ -24,4 +24,12 @@ impl Commit {
     pub fn message(&self) -> &str {
         self.kvlm.get_message()
     }
+
+    pub fn get_tree_hash(&self) -> &String {
+        self.kvlm
+            .get_key("tree")
+            .expect("Each commit must provide a tree")
+            .first()
+            .expect("Tree cannot be assigned to empty value")
+    }
 }

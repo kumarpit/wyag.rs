@@ -1,16 +1,16 @@
 mod kvlm;
-mod macros;
 mod object;
 mod repository;
 
 use clap::{Parser, Subcommand};
-use object::GitrsObject;
+use object::GitrsObject::{CommitObject, TreeObject};
 use object::commit::Commit;
 use object::tree::Leaf;
+use object::{GitrsObject, ObjectType};
 use repository::Repository;
 use std::fs::File;
 use std::io::{BufReader, Read};
-use std::{env, path::Path};
+use std::path::Path;
 
 #[derive(Subcommand, Debug)]
 enum Command {
@@ -25,18 +25,14 @@ enum Command {
     /// and stores it in the repository
     HashObject {
         #[arg(value_parser)] // NOTE: Target type must implement FromStr
-        object_type: object::ObjectType,
+        object_type: ObjectType,
         path: String,
     },
     /// Prints the raw contents of an object (uncompressed and without the git header) to the
     /// stdout
-    CatFile {
-        #[arg(value_parser)]
-        object_type: object::ObjectType,
-        hash: String,
-    },
+    CatFile { hash: String },
+    /// Logs commits on the current branch
     Log {
-        // Logs commits on the current branch
         #[arg(default_value = "HEAD")]
         commit: String,
     },
@@ -45,6 +41,8 @@ enum Command {
         recursive: bool,
         tree: String,
     },
+    /// Checkout a commit inside of a directory
+    Checkout { commit: String, path: String },
 }
 
 /// A light-weight git clone written in Rust
@@ -72,46 +70,63 @@ fn main() {
                 .read_to_end(&mut data)
                 .expect("Could not read file");
 
-            macros::find_repository!(repository, {
-                let hash = GitrsObject::write(&repository, data.as_slice(), object_type);
-                println!("{}", hash);
-            })
+            let repository = Repository::find_repository();
+            let hash = GitrsObject::write(&repository, data.as_slice(), object_type);
+            println!("{}", hash);
         }
-        Command::CatFile { object_type, hash } => {
-            macros::find_repository!(repository, {
-                let mut obj = GitrsObject::read(&repository, &hash, object_type);
-                print!("Object contents");
-                GitrsObject::dump(&obj.serialize());
-            })
+        Command::CatFile { hash } => {
+            let repository = Repository::find_repository();
+            let mut obj = GitrsObject::read(&repository, &hash).unwrap();
+            print!("Object contents");
+            GitrsObject::dump(&obj.serialize());
         }
         Command::Log { commit } => {
             // TODO: list all commits, also default the commit to HEAD rather than using the actual
             // hash
             // This can be achieved using the `object_find` method
-            macros::find_repository!(repository, {
-                if let GitrsObject::CommitObject(commit_obj) =
-                    GitrsObject::read(&repository, &commit, object::ObjectType::Commit)
-                {
-                    println!("[{}] {}", Commit::short(&commit), commit_obj.message());
-                } else {
-                    panic!("Expected commit");
-                }
-            })
+
+            let repository = Repository::find_repository();
+            if let Ok(CommitObject(commit_obj)) = GitrsObject::read(&repository, &commit) {
+                println!("[{}] {}", Commit::short(&commit), commit_obj.message());
+            } else {
+                panic!("Expected commit");
+            }
         }
         Command::LsTree { recursive, tree } => {
-            macros::find_repository!(repository, {
-                if let GitrsObject::TreeObject(tree_obj) =
-                    GitrsObject::read(&repository, &tree, object::ObjectType::Tree)
-                {
-                    // TODO : fix formatting of the lst tree message
-                    tree_obj.records.iter().for_each(|leaf| {
-                        let obj_type = Leaf::get_type_from_mode(&leaf.file_mode);
-                        println!("Found {} object", &obj_type.to_string());
-                    })
-                } else {
-                    panic!("Expected a tree");
-                }
-            })
+            let repository = Repository::find_repository();
+            if let Ok(TreeObject(tree_obj)) = GitrsObject::read(&repository, &tree) {
+                // TODO : fix formatting of the lst tree message
+                // and implement recursive handling
+                tree_obj.records.iter().for_each(|leaf| {
+                    let obj_type = Leaf::get_type_from_mode(&leaf.file_mode);
+                    println!("Found {} object", &obj_type.to_string());
+                })
+            } else {
+                panic!("Expected a tree");
+            }
+        }
+        Command::Checkout {
+            commit,
+            path: path_str,
+        } => {
+            let path = Path::new(&path_str);
+            // TODO: could also make a dir if not exists
+            if !repository::is_empty_dir(path) {
+                panic!("Expected an empty dir at {}", path_str);
+            }
+
+            let repository = Repository::find_repository();
+            let Ok(CommitObject(commit_obj)) = GitrsObject::read(&repository, &commit) else {
+                panic!("Expected a commit object");
+            };
+
+            let Ok(TreeObject(tree_obj)) =
+                GitrsObject::read(&repository, commit_obj.get_tree_hash())
+            else {
+                panic!("Couldn't find tree for {}", commit);
+            };
+
+            // TODO: implement checkout on Tree
         }
     };
 }

@@ -63,6 +63,10 @@ impl Kvlm {
             .as_str()
     }
 
+    pub fn get_key(&self, key: &str) -> Option<&Vec<String>> {
+        self.data.get(&Some(key.to_string()))
+    }
+
     fn parse(raw_data: &[u8]) -> IndexMap<Option<String>, Vec<String>> {
         let mut pos = 0;
         let mut result: IndexMap<Option<String>, Vec<String>> = IndexMap::new();

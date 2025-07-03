@@ -1,5 +1,6 @@
 // Definitions and methods for the gitrs "repository"
 use core::panic;
+use std::env;
 use std::fs::{self, File, canonicalize};
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -91,7 +92,8 @@ impl Repository {
 
     /// Finds the root directory of the nearest gitrs repository by traversing parents of the
     /// `current_path`
-    pub fn find_repository(current_path: &Path) -> Option<Repository> {
+    // TODO: maybe make the behaviour of finding the repository "closest" to the given one optional
+    pub fn find_repository_at(current_path: &Path) -> Option<Repository> {
         let canonical_current_path = canonicalize(current_path).ok()?;
         canonical_current_path
             .join(".gitrs")
@@ -99,8 +101,14 @@ impl Repository {
             .then(|| Repository::new(current_path))
             .or_else(|| match canonical_current_path.parent() {
                 None => None,
-                Some(parent_dir) => Repository::find_repository(parent_dir),
+                Some(parent_dir) => Repository::find_repository_at(parent_dir),
             })
+    }
+
+    /// Find the repository closest to the current active directory
+    pub fn find_repository() -> Repository {
+        Self::find_repository_at(&env::current_dir().unwrap())
+            .expect("Expected a repository at current dir")
     }
 
     /////////////////////////////////////
@@ -189,6 +197,6 @@ impl Repository {
 }
 
 // Returns true if the an empty directory exists at the given path
-fn is_empty_dir(path: &Path) -> bool {
+pub fn is_empty_dir(path: &Path) -> bool {
     path.is_dir() && fs::read_dir(path).map_or(false, |mut entries| entries.next().is_none())
 }

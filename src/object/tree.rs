@@ -1,7 +1,7 @@
-use crate::object::Object;
+use crate::{object::Object, repository::Repository};
 use std::{
     io::{Cursor, Read},
-    path::PathBuf,
+    path::{Path, PathBuf},
     str::FromStr,
 };
 
@@ -57,6 +57,12 @@ impl Object for Tree {
         }
 
         Self { records }
+    }
+}
+
+impl Tree {
+    pub fn checkout(repository: &Repository, path: &Path) {
+        todo!();
     }
 }
 
