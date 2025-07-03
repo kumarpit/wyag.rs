@@ -126,7 +126,9 @@ fn main() {
                 panic!("Couldn't find tree for {}", commit);
             };
 
-            // TODO: implement checkout on Tree
+            tree_obj
+                .checkout(&repository, path)
+                .expect("An error occurred during checkout");
         }
     };
 }

@@ -1,11 +1,14 @@
+use anyhow::anyhow;
+
 use crate::{object::Object, repository::Repository};
 use std::{
-    io::{Cursor, Read},
+    fs,
+    io::{Cursor, Read, Write},
     path::{Path, PathBuf},
     str::FromStr,
 };
 
-use super::ObjectType;
+use super::{GitrsObject, ObjectType};
 
 pub struct Tree {
     pub records: Vec<Leaf>,
@@ -61,8 +64,34 @@ impl Object for Tree {
 }
 
 impl Tree {
-    pub fn checkout(repository: &Repository, path: &Path) {
-        todo!();
+    // TODO: clean up partially created tree in case of failure
+    pub fn checkout(&self, repository: &Repository, path: &Path) -> anyhow::Result<()> {
+        for record in &self.records {
+            let obj = GitrsObject::read(repository, &record.hash)?;
+            let dest = path.join(record.path.as_path());
+            println!("Final path is: {}", dest.display());
+
+            match obj {
+                GitrsObject::TreeObject(tree_obj) => {
+                    fs::create_dir(&dest)?;
+                    tree_obj.checkout(repository, &dest)?
+                }
+                GitrsObject::BlobObject(mut blob_obj) => {
+                    // TODO: support symlinks
+                    let mut file = fs::File::create(&dest)?;
+                    file.write_all(&blob_obj.serialize())?
+                }
+                _ => {
+                    return Err(anyhow!(
+                        "Unexpected object in tree: <type: {} hash: {}>",
+                        obj.get_type(),
+                        record.hash
+                    ));
+                }
+            }
+        }
+
+        Ok(())
     }
 }
 
