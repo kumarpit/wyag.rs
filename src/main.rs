@@ -187,13 +187,15 @@ fn main() {
                         TagType::Lightweight
                     };
 
-                    Tag::create(
-                        &repository,
-                        &name,
-                        &object_opt.expect("Must provide hash if creating tag"),
-                        tag_type,
-                    )
-                    .expect("Couldn't create tag");
+                    if let Some(object) = object_opt {
+                        let hash = GitrsObject::find(&repository, &object, None)
+                            .expect(&format!("Couldn't find object with name: {}", object));
+
+                        Tag::create(&repository, &name, &hash, tag_type)
+                            .expect("Couldn't create tag");
+                    } else {
+                        panic!("Must provide object reference if creating a tag");
+                    }
                 }
                 None => {
                     // TODO: extract into a common method
