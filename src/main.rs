@@ -1,12 +1,15 @@
 mod kvlm;
 mod object;
+mod refs;
 mod repository;
 
 use clap::{Parser, Subcommand};
 use object::GitrsObject::{CommitObject, TreeObject};
 use object::commit::Commit;
+use object::tag::{Tag, TagType};
 use object::tree::Leaf;
 use object::{GitrsObject, ObjectType};
+use refs::Ref;
 use repository::Repository;
 use std::fs::File;
 use std::io::{BufReader, Read};
@@ -43,6 +46,15 @@ enum Command {
     },
     /// Checkout a commit inside of a directory
     Checkout { commit: String, path: String },
+    /// List references
+    ShowRef,
+    /// Create or list tags
+    Tag {
+        #[arg(short = 'a', long = "annotated")]
+        annotated: bool,
+        name: Option<String>,
+        object: Option<String>,
+    },
 }
 
 /// A light-weight git clone written in Rust
@@ -129,6 +141,61 @@ fn main() {
             tree_obj
                 .checkout(&repository, path)
                 .expect("An error occurred during checkout");
+        }
+        Command::ShowRef => {
+            let repository = Repository::find_repository();
+            let refs = Ref::list_at(
+                &repository,
+                &repository
+                    .get_path_to_dir(&["refs"])
+                    .expect("Expected refs dir to exist"),
+            )
+            .expect("Couldn't resolve all refs");
+
+            // TODO: Make a pretty print function for refs
+            for (ref_key, ref_val) in refs.iter() {
+                println!("ref: {} {}", ref_key, ref_val);
+            }
+        }
+        Command::Tag {
+            annotated,
+            name: name_opt,
+            object: object_opt,
+        } => {
+            let repository = Repository::find_repository();
+            // List of create is decided by whether the NAME arg is provided
+            match name_opt {
+                Some(name) => {
+                    let tag_type = if annotated {
+                        TagType::Object
+                    } else {
+                        TagType::Lightweight
+                    };
+
+                    Tag::create(
+                        &repository,
+                        &name,
+                        &object_opt.expect("Must provide hash if creating tag"),
+                        tag_type,
+                    )
+                    .expect("Couldn't create tag");
+                }
+                None => {
+                    // TODO: extract into a common method
+                    let refs = Ref::list_at(
+                        &repository,
+                        &repository
+                            .get_path_to_dir(&["refs"])
+                            .expect("Expected refs dir to exist"),
+                    )
+                    .expect("Couldn't resolve all refs");
+
+                    // TODO: Make a pretty print function for refs
+                    for (ref_key, ref_val) in refs.iter() {
+                        println!("ref: {} {}", ref_key, ref_val);
+                    }
+                }
+            }
         }
     };
 }

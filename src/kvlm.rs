@@ -18,6 +18,12 @@ impl Kvlm {
         }
     }
 
+    pub fn init() -> Self {
+        Self {
+            data: IndexMap::new(),
+        }
+    }
+
     pub fn serialize(&self) -> Vec<u8> {
         let mut output = Vec::new();
 
@@ -65,6 +71,11 @@ impl Kvlm {
 
     pub fn get_key(&self, key: &str) -> Option<&Vec<String>> {
         self.data.get(&Some(key.to_string()))
+    }
+
+    pub fn insert(&mut self, key: &str, value: &str) {
+        self.data
+            .insert(Some(key.to_string()), vec![value.to_string()]);
     }
 
     fn parse(raw_data: &[u8]) -> IndexMap<Option<String>, Vec<String>> {

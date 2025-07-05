@@ -27,7 +27,7 @@ impl Repository {
             "description",
             "Unamed repository; edit this file 'description' to name the repository",
         ],
-        &["HEAD", "refs/head/master"],
+        &["HEAD", "ref: refs/head/master"],
         &["config", ""],
     ];
 
@@ -122,6 +122,11 @@ impl Repository {
 
     pub fn get_path_to_dir(&self, paths: &[&str]) -> Option<PathBuf> {
         self.compute_or_create_repo_dir(paths, false)
+    }
+
+    pub fn create_file(&self, paths: &[&str]) -> Option<PathBuf> {
+        self.compute_or_create_repo_file(paths, true)
+            .and_then(|(_, path)| path.exists().then(|| path))
     }
 
     // Creates the file if it does not exists or truncates it if it does and appends compressed
