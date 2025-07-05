@@ -86,7 +86,7 @@ impl Ref {
                         .map(String::as_str)
                         .collect();
                     let resolved = Self::resolve(repository, &full_path_parts)?;
-                    acc.push((file_name, resolved));
+                    acc.push((full_path_parts.join("/"), resolved));
                 }
                 Ok(acc)
             })
