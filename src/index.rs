@@ -3,7 +3,7 @@ use std::{fs, path::PathBuf, time::SystemTime};
 use crate::repository::Repository;
 
 pub struct Index {
-    version: usize,
+    version: u32,
     entries: Vec<IndexEntry>,
 }
 
@@ -22,6 +22,23 @@ impl Index {
     pub fn read(repository: &Repository) -> Option<Self> {
         let index_file_path = repository.get_path_to_file(&["index"])?;
         let data = fs::read(index_file_path).expect("Couldn't read index file");
-        todo!();
+
+        if &data[..4] != b"DIRC" {
+            panic!("Invalid index signature");
+        }
+
+        let version = u32::from_be_bytes(data[4..8].try_into().unwrap());
+        if version != 2 {
+            panic!("Only index version 2 is supported");
+        }
+
+        let count = u32::from_be_bytes(data[8..12].try_into().unwrap());
+        let content = &data[8..];
+
+        for _ in 0..count {
+            // TODO: parse git index
+        }
+
+        None
     }
 }

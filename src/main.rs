@@ -1,3 +1,4 @@
+mod ignore;
 mod index;
 mod kvlm;
 mod object;
@@ -62,6 +63,10 @@ enum Command {
         #[arg(value_parser)]
         object_type: ObjectType,
         name: String,
+    },
+    CheckIgnore {
+        #[arg(required = true)]
+        paths: Vec<String>,
     },
 }
 
@@ -234,6 +239,9 @@ fn main() {
             )
             .expect(&format!("Couldn't find object with name {}", name));
             println!("{}", hash);
+        }
+        Command::CheckIgnore { paths } => {
+            let repository = Repository::find_repository();
         }
     };
 }
