@@ -5,6 +5,7 @@ mod repository;
 
 use clap::{Parser, Subcommand};
 use object::GitrsObject::{CommitObject, TreeObject};
+use object::ObjectFindOptions;
 use object::commit::Commit;
 use object::tag::{Tag, TagType};
 use object::tree::Leaf;
@@ -100,13 +101,20 @@ fn main() {
             GitrsObject::dump(&obj.serialize());
         }
         Command::Log { commit } => {
-            // TODO: list all commits, also default the commit to HEAD rather than using the actual
-            // hash
-            // This can be achieved using the `object_find` method
-
             let repository = Repository::find_repository();
-            if let Ok(CommitObject(commit_obj)) = GitrsObject::read(&repository, &commit) {
-                println!("[{}] {}", Commit::short(&commit), commit_obj.message());
+
+            let hash = GitrsObject::find(
+                &repository,
+                &commit,
+                Some(ObjectFindOptions {
+                    object_type: ObjectType::Commit,
+                    should_follow: false,
+                }),
+            )
+            .expect(&format!("Couldn't find commit with name: {}", commit));
+
+            if let Ok(CommitObject(commit_obj)) = GitrsObject::read(&repository, &hash) {
+                println!("[{}] {}", Commit::short(&hash), commit_obj.message());
             } else {
                 panic!("Expected commit");
             }
@@ -170,7 +178,7 @@ fn main() {
             object: object_opt,
         } => {
             let repository = Repository::find_repository();
-            // List of create is decided by whether the NAME arg is provided
+            // List or create is decided by whether the NAME arg is provided
             match name_opt {
                 Some(name) => {
                     let tag_type = if annotated {
