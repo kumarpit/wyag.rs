@@ -234,7 +234,7 @@ impl GitrsObject {
                 let obj_name_prefix = &hash.to_lowercase()[2..];
                 let objs = fs::read_dir(obj_path)?;
 
-                let mut candidates = objs.fold(Vec::new(), |mut acc, entry_res| {
+                Ok(objs.fold(Vec::new(), |mut acc, entry_res| {
                     if let Ok(entry) = entry_res {
                         let file_name = entry.file_name().to_string_lossy().into_owned();
                         if file_name.starts_with(obj_name_prefix) {
@@ -242,7 +242,11 @@ impl GitrsObject {
                         }
                     }
                     acc
-                });
+                }))
+            }
+            _ => {
+                // eg. master, v10.4, etc.
+                let mut candidates = Vec::new();
 
                 // Read references (tags)
                 if let Some(tag) = Ref::resolve(repository, &["refs", "tags", name]).ok() {
@@ -261,7 +265,6 @@ impl GitrsObject {
 
                 Ok(candidates)
             }
-            _ => Err(anyhow!("Invalid object name: {}", name)),
         }
     }
 }
