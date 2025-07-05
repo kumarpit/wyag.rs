@@ -42,6 +42,19 @@ impl Ref {
         repository: &Repository,
         path: &Path,
     ) -> anyhow::Result<IndexMap<String, String>> {
+        Ok(Self::list_at_dir(repository, path)?.into_iter().collect())
+    }
+
+    pub fn create_at(repository: &Repository, hash: &str, paths: &[&str]) -> anyhow::Result<()> {
+        let path = repository
+            .create_file(paths)
+            .with_context(|| format!("Couldn't create file at {:?}", paths))?;
+
+        fs::write(path, format!("{}\n", hash))?;
+        Ok(())
+    }
+
+    fn list_at_dir(repository: &Repository, path: &Path) -> anyhow::Result<Vec<(String, String)>> {
         let base_parts: Vec<String> = path
             .components()
             .map(|component| {
@@ -57,34 +70,25 @@ impl Ref {
             .with_context(|| format!("Failed to read dir: {}", path.display()))?
             .collect::<Result<_, io::Error>>()?;
 
-        // Git shows refs sorted
         entries.sort_by_key(|dir_entry| dir_entry.file_name());
 
-        let result: IndexMap<String, String> = entries
+        entries
             .iter()
-            .map(|dir_entry| {
-                // TODO: handle dir case
-                let file_name = dir_entry.file_name().to_string_lossy().into_owned();
-                let full_path_parts: Vec<&str> = base_parts
-                    .iter()
-                    .chain(std::iter::once(&file_name))
-                    .map(String::as_str)
-                    .collect();
-
-                let resolved = Self::resolve(repository, &full_path_parts)?;
-                Ok((file_name, resolved))
+            .try_fold(vec![], |mut acc, dir_entry| -> anyhow::Result<_> {
+                let file_type = dir_entry.file_type()?;
+                if file_type.is_dir() {
+                    acc.extend(Self::list_at_dir(repository, &dir_entry.path())?);
+                } else {
+                    let file_name = dir_entry.file_name().to_string_lossy().into_owned();
+                    let full_path_parts: Vec<&str> = base_parts
+                        .iter()
+                        .chain(std::iter::once(&file_name))
+                        .map(String::as_str)
+                        .collect();
+                    let resolved = Self::resolve(repository, &full_path_parts)?;
+                    acc.push((file_name, resolved));
+                }
+                Ok(acc)
             })
-            .collect::<Result<IndexMap<_, _>, anyhow::Error>>()?;
-
-        Ok(result)
-    }
-
-    pub fn create_at(repository: &Repository, hash: &str, paths: &[&str]) -> anyhow::Result<()> {
-        let path = repository
-            .create_file(paths)
-            .with_context(|| format!("Couldn't create file at {:?}", paths))?;
-
-        fs::write(path, format!("{}\n", hash))?;
-        Ok(())
     }
 }
