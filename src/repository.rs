@@ -27,7 +27,7 @@ impl Repository {
             "description",
             "Unamed repository; edit this file 'description' to name the repository",
         ],
-        &["HEAD", "ref: refs/head/master"],
+        &["HEAD", "ref: refs/heads/master"],
         &["config", ""],
     ];
 

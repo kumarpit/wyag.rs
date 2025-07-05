@@ -154,7 +154,7 @@ fn main() {
 
             // TODO: Make a pretty print function for refs
             for (ref_key, ref_val) in refs.iter() {
-                println!("ref: {} {}", ref_key, ref_val);
+                println!("ref: {:?} {}", ref_key, ref_val);
             }
         }
         Command::Tag {

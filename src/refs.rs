@@ -15,10 +15,10 @@ use crate::repository::Repository;
 pub struct Ref;
 
 impl Ref {
-    pub fn resolve(repository: &Repository, ref_name: &str) -> anyhow::Result<String> {
+    pub fn resolve(repository: &Repository, ref_path: &[&str]) -> anyhow::Result<String> {
         let path = repository
-            .get_path_to_file(&[ref_name])
-            .with_context(|| format!("Not a file: {}", ref_name))?;
+            .get_path_to_file(ref_path)
+            .with_context(|| format!("Not a file: {:?}", ref_path))?;
 
         let mut bytes =
             fs::read(&path).with_context(|| format!("Failed to read file: {}", path.display()))?;
@@ -31,9 +31,8 @@ impl Ref {
         let data = str::from_utf8(&bytes).context("Ref file is not valid UTF-8")?;
 
         if data.starts_with("ref:") {
-            // TODO: the &data[5..] slice needs to be parsed and split into a slice of path
-            // components
-            Ref::resolve(repository, &data[5..])
+            let parts: Vec<&str> = data[5..].split('/').collect();
+            Ref::resolve(repository, &parts)
         } else {
             Ok(data.to_owned())
         }
@@ -43,20 +42,39 @@ impl Ref {
         repository: &Repository,
         path: &Path,
     ) -> anyhow::Result<IndexMap<String, String>> {
-        let mut result: IndexMap<String, String> = IndexMap::new();
+        let base_parts: Vec<String> = path
+            .components()
+            .map(|component| {
+                component
+                    .as_os_str()
+                    .to_str()
+                    .expect("Could not convert path component to string")
+                    .to_string()
+            })
+            .collect();
+
         let mut entries: Vec<_> = fs::read_dir(path)
             .with_context(|| format!("Failed to read dir: {}", path.display()))?
             .collect::<Result<_, io::Error>>()?;
 
+        // Git shows refs sorted
         entries.sort_by_key(|dir_entry| dir_entry.file_name());
 
-        for dir_entry in entries.iter() {
-            // TODO: handle dir case
-            result.insert(
-                dir_entry.file_name().to_string_lossy().into_owned(),
-                Self::resolve(repository, &dir_entry.file_name().to_string_lossy())?,
-            );
-        }
+        let result: IndexMap<String, String> = entries
+            .iter()
+            .map(|dir_entry| {
+                // TODO: handle dir case
+                let file_name = dir_entry.file_name().to_string_lossy().into_owned();
+                let full_path_parts: Vec<&str> = base_parts
+                    .iter()
+                    .chain(std::iter::once(&file_name))
+                    .map(String::as_str)
+                    .collect();
+
+                let resolved = Self::resolve(repository, &full_path_parts)?;
+                Ok((file_name, resolved))
+            })
+            .collect::<Result<IndexMap<_, _>, anyhow::Error>>()?;
 
         Ok(result)
     }
@@ -64,7 +82,7 @@ impl Ref {
     pub fn create_at(repository: &Repository, hash: &str, paths: &[&str]) -> anyhow::Result<()> {
         let path = repository
             .create_file(paths)
-            .with_context(|| format!("Couldn't create file"))?;
+            .with_context(|| format!("Couldn't create file at {:?}", paths))?;
 
         fs::write(path, format!("{}\n", hash))?;
         Ok(())
