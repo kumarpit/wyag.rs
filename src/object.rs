@@ -243,7 +243,7 @@ impl GitrsObject {
             GitrsObject::TagObject(tag_obj) => {
                 Self::find_with_options(repository, tag_obj.get_object_hash(), options)
             }
-            _ => Err(anyhow!("Couldn't resolve object type")),
+            _ => Err(anyhow!("No object matching type")),
         }
     }
 

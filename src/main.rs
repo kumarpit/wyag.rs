@@ -1,3 +1,4 @@
+mod index;
 mod kvlm;
 mod object;
 mod refs;
@@ -56,6 +57,12 @@ enum Command {
         name: Option<String>,
         object: Option<String>,
     },
+    /// Resolve refernces
+    RevParse {
+        #[arg(value_parser)]
+        object_type: ObjectType,
+        name: String,
+    },
 }
 
 /// A light-weight git clone written in Rust
@@ -89,6 +96,7 @@ fn main() {
             println!("{}", hash);
         }
         Command::CatFile { object } => {
+            // TODO: should take a type argument as well
             let repository = Repository::find_repository();
 
             let hash = GitrsObject::find(&repository, &object, None)
@@ -213,6 +221,19 @@ fn main() {
                     }
                 }
             }
+        }
+        Command::RevParse { object_type, name } => {
+            let repository = Repository::find_repository();
+            let hash = GitrsObject::find(
+                &repository,
+                &name,
+                Some(ObjectFindOptions {
+                    object_type,
+                    should_follow: true,
+                }),
+            )
+            .expect(&format!("Couldn't find object with name {}", name));
+            println!("{}", hash);
         }
     };
 }
