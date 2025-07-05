@@ -47,4 +47,12 @@ impl Tag {
             }
         }
     }
+
+    pub fn get_object_hash(&self) -> &String {
+        self.kvlm
+            .get_key("object")
+            .expect("Each tag object must provide a target object hash")
+            .first()
+            .expect("Object cannot be assigned to empty value")
+    }
 }

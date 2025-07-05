@@ -37,7 +37,7 @@ pub enum GitrsObject {
     TreeObject(Tree),
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum ObjectType {
     Blob,
     Commit,
@@ -80,6 +80,11 @@ impl FromStr for ObjectType {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         ObjectType::try_from(s).map_err(|e| e.to_string())
     }
+}
+
+pub struct ObjectFindOptions {
+    pub object_type: ObjectType,
+    pub should_follow: bool,
 }
 
 impl GitrsObject {
@@ -193,11 +198,21 @@ impl GitrsObject {
         sha
     }
 
-    pub fn find(repository: &Repository, name: &str) -> anyhow::Result<String> {
+    pub fn find(
+        repository: &Repository,
+        name: &str,
+        options_opt: Option<ObjectFindOptions>,
+    ) -> anyhow::Result<String> {
         let shas = Self::resolve(repository, name)?;
         match shas.len() {
             0 => Err(anyhow!("Couldn't find object with name: {}", name)),
-            1 => Ok(shas.get(0).unwrap().clone()),
+            1 => {
+                let sha = shas.get(0).unwrap();
+                match options_opt {
+                    Some(options) => Self::find_with_options(repository, sha, options),
+                    None => Ok(sha.clone()),
+                }
+            }
             _ => Err(anyhow!(
                 "Ambigious reference ({}). Candidates are: {:?}",
                 name,
@@ -206,15 +221,30 @@ impl GitrsObject {
         }
     }
 
-    // Hex dump
-    pub fn dump(buf: &Vec<u8>) {
-        for (i, byte) in buf.iter().enumerate() {
-            if i % 16 == 0 {
-                print!("\n{:08x}: ", i);
-            }
-            print!("{:02x} ", byte);
+    fn find_with_options(
+        repository: &Repository,
+        sha: &str,
+        options: ObjectFindOptions,
+    ) -> anyhow::Result<String> {
+        let object = Self::read(repository, sha)?;
+
+        if object.get_type() == options.object_type {
+            return Ok(sha.to_owned());
         }
-        println!();
+
+        if !options.should_follow {
+            return Err(anyhow!("Couldn't resolve object type"));
+        }
+
+        match object {
+            GitrsObject::CommitObject(commit_obj) if options.object_type == ObjectType::Tree => {
+                Self::find_with_options(repository, commit_obj.get_tree_hash(), options)
+            }
+            GitrsObject::TagObject(tag_obj) => {
+                Self::find_with_options(repository, tag_obj.get_object_hash(), options)
+            }
+            _ => Err(anyhow!("Couldn't resolve object type")),
+        }
     }
 
     /// Resolves a human-readable name to an object hash
@@ -266,5 +296,16 @@ impl GitrsObject {
                 Ok(candidates)
             }
         }
+    }
+
+    // Hex dump
+    pub fn dump(buf: &Vec<u8>) {
+        for (i, byte) in buf.iter().enumerate() {
+            if i % 16 == 0 {
+                print!("\n{:08x}: ", i);
+            }
+            print!("{:02x} ", byte);
+        }
+        println!();
     }
 }

@@ -90,7 +90,7 @@ fn main() {
         Command::CatFile { object } => {
             let repository = Repository::find_repository();
 
-            let hash = GitrsObject::find(&repository, &object)
+            let hash = GitrsObject::find(&repository, &object, None)
                 .expect(&format!("Couldn't find object with name: {}", object));
 
             let mut obj = GitrsObject::read(&repository, &hash)
