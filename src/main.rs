@@ -33,7 +33,7 @@ enum Command {
     },
     /// Prints the raw contents of an object (uncompressed and without the git header) to the
     /// stdout
-    CatFile { hash: String },
+    CatFile { object: String },
     /// Logs commits on the current branch
     Log {
         #[arg(default_value = "HEAD")]
@@ -83,12 +83,19 @@ fn main() {
                 .expect("Could not read file");
 
             let repository = Repository::find_repository();
-            let hash = GitrsObject::write(&repository, data.as_slice(), object_type);
+            let hash =
+                GitrsObject::deserialize_and_write(&repository, data.as_slice(), object_type);
             println!("{}", hash);
         }
-        Command::CatFile { hash } => {
+        Command::CatFile { object } => {
             let repository = Repository::find_repository();
-            let mut obj = GitrsObject::read(&repository, &hash).unwrap();
+
+            let hash = GitrsObject::find(&repository, &object)
+                .expect(&format!("Couldn't find object with name: {}", object));
+
+            let mut obj = GitrsObject::read(&repository, &hash)
+                .expect(&format!("Couldn't read object with hash: {}", hash));
+
             print!("Object contents");
             GitrsObject::dump(&obj.serialize());
         }

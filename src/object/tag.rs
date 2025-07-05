@@ -42,6 +42,7 @@ impl Tag {
                 kvlm.insert("object", hash);
                 kvlm.insert("tag", name);
 
+                // TODO: complete
                 Ok(())
             }
         }

@@ -5,8 +5,7 @@ pub mod error;
 pub mod tag;
 pub mod tree;
 
-use core::panic;
-use std::fs::File;
+use std::fs::{self, File};
 use std::io::{BufReader, Read};
 use std::str::{FromStr, from_utf8};
 
@@ -14,6 +13,7 @@ use anyhow::anyhow;
 use flate2::bufread::ZlibDecoder;
 use sha1::{Digest, Sha1};
 
+use crate::refs::Ref;
 use crate::repository::Repository;
 use blob::Blob;
 use commit::Commit;
@@ -113,8 +113,12 @@ impl GitrsObject {
         }
     }
 
-    pub fn write(repository: &Repository, data: &[u8], object_type: ObjectType) -> String {
-        Self::deserialize(data, object_type.to_string().as_str()).object_write(repository)
+    pub fn deserialize_and_write(
+        repository: &Repository,
+        data: &[u8],
+        object_type: ObjectType,
+    ) -> String {
+        Self::deserialize(data, object_type.to_string().as_str()).write(repository)
     }
 
     /// Read and parse the object specified by `sha` in the given repository
@@ -168,7 +172,7 @@ impl GitrsObject {
     }
 
     /// Write the current object to the repository
-    pub fn object_write(&mut self, repository: &Repository) -> String {
+    pub fn write(&mut self, repository: &Repository) -> String {
         let data = self.serialize();
 
         let header = format!("{}\x20{}\x00", self.get_type(), data.len());
@@ -189,8 +193,18 @@ impl GitrsObject {
         sha
     }
 
-    // TODO: should return the sha hash for an object given a ref
-    //pub fn find() {}
+    pub fn find(repository: &Repository, name: &str) -> anyhow::Result<String> {
+        let shas = Self::resolve(repository, name)?;
+        match shas.len() {
+            0 => Err(anyhow!("Couldn't find object with name: {}", name)),
+            1 => Ok(shas.get(0).unwrap().clone()),
+            _ => Err(anyhow!(
+                "Ambigious reference ({}). Candidates are: {:?}",
+                name,
+                shas
+            )),
+        }
+    }
 
     // Hex dump
     pub fn dump(buf: &Vec<u8>) {
@@ -201,5 +215,53 @@ impl GitrsObject {
             print!("{:02x} ", byte);
         }
         println!();
+    }
+
+    /// Resolves a human-readable name to an object hash
+    fn resolve(repository: &Repository, name: &str) -> anyhow::Result<Vec<String>> {
+        match name {
+            _ if name.trim().is_empty() => {
+                Err(anyhow!("Cannot resolve empty string as object name"))
+            }
+            "HEAD" => Ok(vec![Ref::resolve(repository, &["HEAD"])?]),
+            hash if hash.chars().all(|c| c.is_digit(16)) => {
+                let dir = &hash.to_lowercase()[..2];
+
+                // Read objects
+                let obj_path = repository
+                    .get_path_to_dir(&["objects", &dir])
+                    .ok_or_else(|| anyhow!("Object dir doesn't exist: objects/{}", dir))?;
+                let obj_name_prefix = &hash.to_lowercase()[2..];
+                let objs = fs::read_dir(obj_path)?;
+
+                let mut candidates = objs.fold(Vec::new(), |mut acc, entry_res| {
+                    if let Ok(entry) = entry_res {
+                        let file_name = entry.file_name().to_string_lossy().into_owned();
+                        if file_name.starts_with(obj_name_prefix) {
+                            acc.push(format!("{}{}", dir, file_name.to_string()));
+                        }
+                    }
+                    acc
+                });
+
+                // Read references (tags)
+                if let Some(tag) = Ref::resolve(repository, &["refs", "tags", name]).ok() {
+                    candidates.push(tag);
+                }
+
+                // Find local branches
+                if let Some(branch) = Ref::resolve(repository, &["refs", "heads", name]).ok() {
+                    candidates.push(branch);
+                }
+
+                // Find remote branches
+                if let Some(remote) = Ref::resolve(repository, &["refs", "remotes", name]).ok() {
+                    candidates.push(remote);
+                }
+
+                Ok(candidates)
+            }
+            _ => Err(anyhow!("Invalid object name: {}", name)),
+        }
     }
 }
