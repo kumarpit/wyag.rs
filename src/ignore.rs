@@ -99,8 +99,12 @@ impl IgnoreRules {
         })
     }
 
+    /// Checks if the given path matches any ignore rules. Checks for the nearest gitrsignore file,
+    /// eventually checking the absolute ignore rules if none of the repository-specific ignore
+    /// rules match
     pub fn check(&self, path: &Path) -> Option<MatchKind> {
         std::iter::successors(path.parent(), |p| p.parent()).find_map(|parent| {
+            // TODO: if nothing matches then look up absolute rules
             self.relative
                 .get(parent)
                 .and_then(|rule_set| Self::matches_rules(rule_set, path))

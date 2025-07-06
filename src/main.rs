@@ -143,7 +143,7 @@ fn main() {
             }
         }
 
-        Command::LsTree { recursive, tree } => {
+        Command::LsTree { recursive: _, tree } => {
             let repository = Repository::find_repository();
 
             if let Ok(TreeObject(tree_obj)) = GitrsObject::read(&repository, &tree) {
