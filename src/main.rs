@@ -7,6 +7,7 @@ mod repository;
 
 use clap::{Parser, Subcommand};
 use ignore::IgnoreRules;
+use index::Index;
 use log::{error, info};
 use object::GitrsObject::{CommitObject, TreeObject};
 use object::commit::Commit;
@@ -70,6 +71,8 @@ enum Command {
         #[arg(required = true)]
         paths: Vec<String>,
     },
+    /// Displays the names of files in the staging area
+    LsFiles,
 }
 
 /// Main CLI struct for gitrs
@@ -270,6 +273,16 @@ fn main() {
                         None => info!("No rule matching {}", path),
                     }),
                 None => info!("No ignore rules found in repository"),
+            }
+        }
+        Command::LsFiles => {
+            let repository = Repository::find_repository();
+            let index = Index::read(&repository).expect("No index file found");
+
+            info!("Dumping index file list");
+
+            for entry in index.entries {
+                info!("{}", entry.path.display());
             }
         }
     };
