@@ -8,8 +8,9 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use anyhow::{Context, Result, anyhow, bail, ensure};
+use anyhow::{Context, Result, anyhow, ensure};
 use flate2::{Compression, write::ZlibEncoder};
+use log::error;
 
 pub struct Repository {
     pub worktree: PathBuf,
@@ -120,7 +121,7 @@ impl Repository {
         let (file, path) = self.compute_or_create_repo_file(paths, true)?;
         ZlibEncoder::new(file, Compression::default())
             .write_all(data)
-            .map_err(|e| eprintln!("Could not compress file at {}: {}", path.display(), e))
+            .map_err(|e| error!("Could not compress file at {}: {}", path.display(), e))
             .ok()?;
         Some(path)
     }
@@ -146,7 +147,7 @@ impl Repository {
         let file = if create_if_missing {
             File::create(&path)
                 .map_err(|e| {
-                    eprintln!("Error creating file {}: {}", path.display(), e);
+                    error!("Error creating file {}: {}", path.display(), e);
                 })
                 .ok()
         } else {

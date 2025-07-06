@@ -1,4 +1,5 @@
 use anyhow::anyhow;
+use log::info;
 
 use crate::{object::Object, repository::Repository};
 use std::{
@@ -69,7 +70,7 @@ impl Tree {
         for record in &self.records {
             let obj = GitrsObject::read(repository, &record.hash)?;
             let dest = path.join(record.path.as_path());
-            println!("Final path is: {}", dest.display());
+            info!("Final path is: {}", dest.display());
 
             match obj {
                 GitrsObject::TreeObject(tree_obj) => {
@@ -108,7 +109,7 @@ impl Leaf {
             + curr_pos;
         let mut mode = String::from_utf8_lossy(&data[curr_pos..space_idx]).into_owned();
 
-        println!("size for mode: {}", space_idx - curr_pos);
+        info!("Size for mode: {}", space_idx - curr_pos);
         // Normalize to 6 bytes
         if space_idx - curr_pos == 5 {
             mode.insert(0, '0');

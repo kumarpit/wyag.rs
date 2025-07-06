@@ -11,6 +11,7 @@ use std::str::{FromStr, from_utf8};
 
 use anyhow::{Result, anyhow};
 use flate2::bufread::ZlibDecoder;
+use log::info;
 use sha1::{Digest, Sha1};
 
 use crate::refs::Ref;
@@ -151,7 +152,7 @@ impl GitrsObject {
         let mut decompressed = Vec::new();
         decoder.read_to_end(&mut decompressed)?;
 
-        print!("Raw object");
+        info!("Dumping raw object");
         Self::dump(&decompressed);
 
         let type_end = decompressed

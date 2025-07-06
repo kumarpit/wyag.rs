@@ -81,7 +81,7 @@ impl IgnoreRules {
 
                 let blob_data = match GitrsObject::read(repository, &entry.sha).ok()? {
                     GitrsObject::BlobObject(blob) => blob.get_data(),
-                    _ => return None, // this should never happen...
+                    _ => panic!("Malformed .gitignore entry, not a blob object"),
                 };
 
                 let lines = str::from_utf8(&blob_data).ok()?.lines();

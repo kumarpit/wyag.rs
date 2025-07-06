@@ -6,6 +6,7 @@ mod refs;
 mod repository;
 
 use clap::{Parser, Subcommand};
+use log::{error, info};
 use object::GitrsObject::{CommitObject, TreeObject};
 use object::commit::Commit;
 use object::tag::{Tag, TagType};
@@ -79,14 +80,18 @@ struct Gitrs {
 }
 
 fn main() {
+    env_logger::Builder::new()
+        .filter_level(log::LevelFilter::Debug)
+        .init();
+
     let gitrs = Gitrs::parse();
 
     match gitrs.cmd {
         Command::Init { path } => {
             // Initialize a new repository at the given path
             match Repository::init(Path::new(&path)) {
-                Ok(_) => println!("Successfully initialized git repository"),
-                Err(e) => eprintln!("Error initializing repository: {}", e),
+                Ok(_) => info!("Successfully initialized git repository"),
+                Err(e) => error!("Error initializing repository: {}", e),
             }
         }
 
@@ -100,7 +105,7 @@ fn main() {
 
             let repository = Repository::find_repository();
             let hash = GitrsObject::deserialize_and_write(&repository, &data, object_type);
-            println!("{}", hash);
+            info!("{}", hash);
         }
 
         Command::CatFile { object } => {
@@ -113,7 +118,7 @@ fn main() {
             let mut obj = GitrsObject::read(&repository, &hash)
                 .unwrap_or_else(|_| panic!("Couldn't read object with hash '{}'", hash));
 
-            println!("Object contents:");
+            info!("Object contents:");
             GitrsObject::dump(&obj.serialize());
         }
 
@@ -131,7 +136,7 @@ fn main() {
             .unwrap_or_else(|_| panic!("Couldn't find commit named '{}'", commit));
 
             if let Ok(CommitObject(commit_obj)) = GitrsObject::read(&repository, &hash) {
-                println!("[{}] {}", Commit::short(&hash), commit_obj.message());
+                info!("[{}] {}", Commit::short(&hash), commit_obj.message());
             } else {
                 panic!("Expected commit object for hash {}", hash);
             }
@@ -144,7 +149,7 @@ fn main() {
                 // TODO: fix formatting and implement recursive listing
                 for leaf in &tree_obj.records {
                     let obj_type = Leaf::get_type_from_mode(&leaf.file_mode);
-                    println!("Found {} object", obj_type);
+                    info!("Found {} object", obj_type);
                 }
             } else {
                 panic!("Expected a tree object for {}", tree);
@@ -192,7 +197,7 @@ fn main() {
 
             // TODO: implement pretty print for refs
             for (ref_key, ref_val) in refs.iter() {
-                println!("ref: {} {}", ref_key, ref_val);
+                info!("ref: {} {}", ref_key, ref_val);
             }
         }
 
@@ -232,7 +237,7 @@ fn main() {
                     .expect("Couldn't resolve refs");
 
                     for (ref_key, ref_val) in refs.iter() {
-                        println!("ref: {} {}", ref_key, ref_val);
+                        info!("ref: {} {}", ref_key, ref_val);
                     }
                 }
             }
@@ -251,7 +256,7 @@ fn main() {
             )
             .unwrap_or_else(|_| panic!("Couldn't find object named '{}'", name));
 
-            println!("{}", hash);
+            info!("{}", hash);
         }
 
         Command::CheckIgnore { paths: _ } => {
