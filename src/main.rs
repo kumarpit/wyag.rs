@@ -16,7 +16,7 @@ use object::tree::Leaf;
 use object::{GitrsObject, ObjectFindOptions, ObjectType};
 use refs::Ref;
 use repository::Repository;
-use std::fs::File;
+use std::fs::{self, File};
 use std::io::{BufReader, Read};
 use std::path::{Path, PathBuf};
 
@@ -271,12 +271,13 @@ fn main() {
         Command::CheckIgnore { paths } => {
             let repository = Repository::find_repository();
             match IgnoreRules::read(&repository) {
-                Some(rules) => paths
-                    .iter()
-                    .for_each(|path| match rules.check(Path::new(path)) {
+                Some(rules) => paths.iter().for_each(|path| {
+                    match rules.check(&fs::canonicalize(path).expect("Couldn't canonicalize path"))
+                    {
                         Some(kind) => info!("{} {:?}", path, kind),
                         None => info!("No rule matching {}", path),
-                    }),
+                    }
+                }),
                 None => info!("No ignore rules found in repository"),
             }
         }

@@ -110,9 +110,11 @@ impl IgnoreRules {
     /// eventually checking the absolute ignore rules if none of the repository-specific ignore
     /// rules match
     pub fn check(&self, path: &Path) -> Option<MatchKind> {
+        debug!("Called check on: {:?}", path.display());
         // TODO: this function is incorrect in that this is most likely skipping one level no?
-        std::iter::successors(Some(path), |p| p.parent()).find_map(|parent| {
+        std::iter::successors(path.parent(), |p| p.parent()).find_map(|parent| {
             // TODO: if nothing matches then look up absolute rules
+            debug!("Trying to lookup path: {:?}", parent.display());
             self.relative
                 .get(parent)
                 .and_then(|rule_set| Self::matches_rules(rule_set, path))
