@@ -1,13 +1,15 @@
 // Definitions and methods for the gitrs "repository"
-use core::panic;
-use std::env;
-use std::fs::{self, File, canonicalize};
-use std::io::Write;
-use std::path::{Path, PathBuf};
 
-use anyhow::{Context, Ok, Result, anyhow, bail, ensure};
-use flate2::Compression;
-use flate2::write::ZlibEncoder;
+use core::panic;
+use std::{
+    env,
+    fs::{self, File, canonicalize},
+    io::Write,
+    path::{Path, PathBuf},
+};
+
+use anyhow::{Context, Result, anyhow, bail, ensure};
+use flate2::{Compression, write::ZlibEncoder};
 
 pub struct Repository {
     pub worktree: PathBuf,
@@ -35,9 +37,7 @@ impl Repository {
     /// Repository Initialization
     /////////////////////////////////////
 
-    // Construct a Repository object
-    // WARN: Use this to create an in-memory representation of an existing repository, not to
-    // initialize a new repository
+    /// Constructs an in-memory handle to an existing repository
     pub fn new(worktree: &Path) -> Self {
         Self {
             worktree: worktree.to_path_buf(),
@@ -45,68 +45,54 @@ impl Repository {
         }
     }
 
-    // Initialize a gitrs repository within the given worktree path
-    // TODO: Perform clean up of resources if this bails
+    /// Initializes a new gitrs repository
     pub fn init(worktree: &Path) -> Result<Self> {
         let gitdir = worktree.join(".gitrs");
+
         ensure!(
             worktree.exists(),
             "Invalid worktree: {}",
             worktree.display()
         );
 
-        if gitdir.exists() && !is_empty_dir(gitdir.as_path()) {
-            bail!("Expected empty directory at: {}", gitdir.display());
-        } else {
-            fs::create_dir_all(gitdir.as_path())
-                .with_context(|| format!("Failed to create the path {}", gitdir.display()))?;
+        ensure!(
+            !gitdir.exists() || is_empty_dir(&gitdir),
+            "Expected empty directory at: {}",
+            gitdir.display()
+        );
+
+        fs::create_dir_all(&gitdir)
+            .with_context(|| format!("Failed to create directory {}", gitdir.display()))?;
+
+        let repo = Self::new(worktree);
+
+        for segments in Self::REQUIRED_DIRS {
+            repo.compute_or_create_repo_dir(segments, true)
+                .ok_or_else(|| anyhow!("Could not create directory: {:?}", segments))?;
         }
 
-        let repository = Self::new(worktree);
+        for [file, content] in Self::REQUIRED_FILES {
+            let (_, path) = repo
+                .compute_or_create_repo_file(&[file], true)
+                .ok_or_else(|| anyhow!("Could not create file: {}", file))?;
+            repo.write_to_repo_file(&path, content.as_bytes())?;
+        }
 
-        Self::REQUIRED_DIRS.iter().try_for_each(|segments| {
-            repository
-                .compute_or_create_repo_dir(segments, true)
-                .ok_or(anyhow!(
-                    "Could not create paths for segments: {:?}",
-                    segments
-                ))?;
-            Ok(())
-        })?;
-
-        Self::REQUIRED_FILES
-            .iter()
-            .try_for_each(|[file, content]| {
-                repository.write_to_repo_file(
-                    &repository
-                        .compute_or_create_repo_file(&[file], true)
-                        .ok_or(anyhow!("Could not make file: {}", file))?
-                        .1,
-                    content.as_bytes(),
-                )?;
-                Ok(())
-            })?;
-
-        Ok(repository)
+        Ok(repo)
     }
 
-    /// Finds the root directory of the nearest gitrs repository by traversing parents of the
-    /// `current_path`
-    // TODO: maybe make the behaviour of finding the repository "closest" to the given one optional
-    pub fn find_repository_at(current_path: &Path) -> Option<Repository> {
-        let canonical_current_path = canonicalize(current_path).ok()?;
-        canonical_current_path
-            .join(".gitrs")
-            .exists()
-            .then(|| Repository::new(current_path))
-            .or_else(|| match canonical_current_path.parent() {
-                None => None,
-                Some(parent_dir) => Repository::find_repository_at(parent_dir),
-            })
+    /// Recursively searches for a repository starting from the given path
+    pub fn find_repository_at(current_path: &Path) -> Option<Self> {
+        let path = canonicalize(current_path).ok()?;
+        if path.join(".gitrs").exists() {
+            Some(Self::new(current_path))
+        } else {
+            path.parent().and_then(Self::find_repository_at)
+        }
     }
 
-    /// Find the repository closest to the current active directory
-    pub fn find_repository() -> Repository {
+    /// Finds the closest repository to the current working directory
+    pub fn find_repository() -> Self {
         Self::find_repository_at(&env::current_dir().unwrap())
             .expect("Expected a repository at current dir")
     }
@@ -117,7 +103,7 @@ impl Repository {
 
     pub fn get_path_to_file(&self, paths: &[&str]) -> Option<PathBuf> {
         self.compute_or_create_repo_file(paths, false)
-            .and_then(|(_, path)| path.exists().then(|| path))
+            .and_then(|(_, path)| path.exists().then_some(path))
     }
 
     pub fn get_path_to_dir(&self, paths: &[&str]) -> Option<PathBuf> {
@@ -126,82 +112,79 @@ impl Repository {
 
     pub fn create_file(&self, paths: &[&str]) -> Option<PathBuf> {
         self.compute_or_create_repo_file(paths, true)
-            .and_then(|(_, path)| path.exists().then(|| path))
+            .and_then(|(_, path)| path.exists().then_some(path))
     }
 
-    // Creates the file if it does not exists or truncates it if it does and appends compressed
-    // data
+    /// Compresses and writes to a file (upserts if exists)
     pub fn upsert_file(&self, paths: &[&str], data: &Vec<u8>) -> Option<PathBuf> {
         let (file, path) = self.compute_or_create_repo_file(paths, true)?;
         ZlibEncoder::new(file, Compression::default())
-            .write_all(&data)
-            .map_err(|e| eprintln!("Could not compress file at: {} {}", path.display(), e))
+            .write_all(data)
+            .map_err(|e| eprintln!("Could not compress file at {}: {}", path.display(), e))
             .ok()?;
-
         Some(path)
     }
 
-    // Computes the path under a repository's gitrs directory
+    /// Computes a full path under `.gitrs` directory
     fn compute_repo_path(&self, paths: &[&str]) -> PathBuf {
-        paths.iter().fold(self.gitdir.clone(), |mut acc, path| {
-            acc.push(path);
+        paths.iter().fold(self.gitdir.clone(), |mut acc, p| {
+            acc.push(p);
             acc
         })
     }
 
-    // Creates the trailing directories and file if the should_create flag is set
+    /// Computes or creates a file path under the repository
     fn compute_or_create_repo_file(
         &self,
         paths: &[&str],
-        should_create: bool,
+        create_if_missing: bool,
     ) -> Option<(File, PathBuf)> {
-        match self.compute_or_create_repo_dir(&paths[..paths.len() - 1], should_create) {
-            Some(_) => {
-                let file_path = self.compute_repo_path(paths);
-                let file = should_create
-                    .then(|| {
-                        File::create(&file_path)
-                            .map_err(|e| {
-                                eprintln!(
-                                    "An error occurred creating file at: {} {}",
-                                    file_path.display(),
-                                    e
-                                )
-                            })
-                            .ok()
-                    })
-                    .unwrap_or_else(|| File::open(&file_path).ok());
-                Some((file?, file_path))
-            }
-            None => None,
-        }
+        // Ensure parent dir exists or is created if create_if_missing is true
+        let _dir = self.compute_or_create_repo_dir(&paths[..paths.len() - 1], create_if_missing)?;
+        let path = self.compute_repo_path(paths);
+
+        let file = if create_if_missing {
+            File::create(&path)
+                .map_err(|e| {
+                    eprintln!("Error creating file {}: {}", path.display(), e);
+                })
+                .ok()
+        } else {
+            File::open(&path).ok()
+        }?;
+
+        Some((file, path))
     }
 
-    // Same as compute_repo_path, but creates the path if the should_create flag is true
-    fn compute_or_create_repo_dir(&self, paths: &[&str], should_create: bool) -> Option<PathBuf> {
+    /// Computes or creates a directory path under the repository
+    fn compute_or_create_repo_dir(
+        &self,
+        paths: &[&str],
+        create_if_missing: bool,
+    ) -> Option<PathBuf> {
         let path = self.compute_repo_path(paths);
         if path.exists() {
             assert!(path.is_dir(), "Expected a directory at {}", path.display());
-            return Some(path);
-        }
-        should_create.then(|| {
+            Some(path)
+        } else if create_if_missing {
             fs::create_dir_all(&path)
-                .unwrap_or_else(|e| panic!("Failed to create the path {}: {}", path.display(), e));
-            path
-        })
+                .unwrap_or_else(|e| panic!("Failed to create directory {}: {}", path.display(), e));
+            Some(path)
+        } else {
+            None
+        }
     }
 
-    // WARN: Truncates before writing!
+    /// Writes content to a file (truncates first)
     fn write_to_repo_file(&self, path: &PathBuf, content: &[u8]) -> Result<()> {
         File::create(path)
-            .map_err(|e| anyhow!("Could not create file: {} {}", path.display(), e))?
+            .with_context(|| format!("Could not create file: {}", path.display()))?
             .write_all(content)
-            .map_err(|e| anyhow!("Could not write data to file: {} {}", path.display(), e))?;
-        Ok(())
+            .with_context(|| format!("Could not write to file: {}", path.display()))
     }
 }
 
-// Returns true if the an empty directory exists at the given path
+/// Returns true if a directory exists and is empty
 pub fn is_empty_dir(path: &Path) -> bool {
     path.is_dir() && fs::read_dir(path).map_or(false, |mut entries| entries.next().is_none())
 }

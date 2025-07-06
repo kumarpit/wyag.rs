@@ -9,7 +9,7 @@ use std::fs::{self, File};
 use std::io::{BufReader, Read};
 use std::str::{FromStr, from_utf8};
 
-use anyhow::anyhow;
+use anyhow::{Result, anyhow};
 use flate2::bufread::ZlibDecoder;
 use sha1::{Digest, Sha1};
 
@@ -22,14 +22,19 @@ use tag::Tag;
 use tree::Tree;
 
 /////////////////////////////////////
-///Object Representation
+/// Object Representation
 /////////////////////////////////////
 
+/// Trait representing a gitrs object that can be serialized and deserialized.
 pub trait Object {
+    /// Serialize the object into a vector of bytes.
     fn serialize(&mut self) -> Vec<u8>;
+
+    /// Deserialize the object from a slice of bytes.
     fn deserialize(data: &[u8]) -> Self;
 }
 
+/// Enum of all supported gitrs object types.
 pub enum GitrsObject {
     BlobObject(Blob),
     CommitObject(Commit),
@@ -37,6 +42,7 @@ pub enum GitrsObject {
     TreeObject(Tree),
 }
 
+/// Enum representing the type of git object.
 #[derive(Clone, Debug, PartialEq)]
 pub enum ObjectType {
     Blob,
@@ -46,30 +52,30 @@ pub enum ObjectType {
 }
 
 impl std::fmt::Display for ObjectType {
+    /// Formats the object type as a string (e.g. "blob", "commit").
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         use ObjectType::*;
-
-        let format_name = match self {
+        let name = match self {
             Blob => "blob",
             Commit => "commit",
             Tag => "tag",
             Tree => "tree",
         };
-
-        write!(f, "{format_name}")
+        write!(f, "{name}")
     }
 }
 
 impl TryFrom<&str> for ObjectType {
     type Error = ObjectError;
 
+    /// Tries to convert a string into a valid ObjectType.
     fn try_from(value: &str) -> Result<Self, Self::Error> {
         match value {
             "blob" => Ok(ObjectType::Blob),
             "commit" => Ok(ObjectType::Commit),
             "tag" => Ok(ObjectType::Tag),
             "tree" => Ok(ObjectType::Tree),
-            rest => Err(ObjectError::UnrecognizedObjectType(rest.to_string())),
+            other => Err(ObjectError::UnrecognizedObjectType(other.to_string())),
         }
     }
 }
@@ -77,17 +83,22 @@ impl TryFrom<&str> for ObjectType {
 impl FromStr for ObjectType {
     type Err = String;
 
+    /// Parses an ObjectType from a string, returning an error string on failure.
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         ObjectType::try_from(s).map_err(|e| e.to_string())
     }
 }
 
+/// Options to control how object resolution behaves.
 pub struct ObjectFindOptions {
+    /// The expected type of the object.
     pub object_type: ObjectType,
+    /// Whether to follow tags/commits to resolve to the final object type.
     pub should_follow: bool,
 }
 
 impl GitrsObject {
+    /// Returns the `ObjectType` corresponding to this GitrsObject.
     pub fn get_type(&self) -> ObjectType {
         match self {
             GitrsObject::BlobObject(_) => ObjectType::Blob,
@@ -97,9 +108,7 @@ impl GitrsObject {
         }
     }
 
-    // Objects are stored in the following format:
-    // <TYPE>0x20<SIZE>0x00<CONTENTS>
-    // The header part, and the contents, are then compressed using Zlib
+    /// Serializes the git object including its type header and content.
     pub fn serialize(&mut self) -> Vec<u8> {
         match self {
             GitrsObject::BlobObject(blob) => blob.serialize(),
@@ -109,6 +118,7 @@ impl GitrsObject {
         }
     }
 
+    /// Deserializes data into the appropriate GitrsObject variant based on the type string.
     pub fn deserialize(data: &[u8], object_type: &str) -> Self {
         match ObjectType::try_from(object_type).unwrap() {
             ObjectType::Blob => Self::BlobObject(Blob::deserialize(data)),
@@ -118,77 +128,71 @@ impl GitrsObject {
         }
     }
 
+    /// Deserialize data and write the object to the repository, returning the SHA-1 hash.
     pub fn deserialize_and_write(
         repository: &Repository,
         data: &[u8],
         object_type: ObjectType,
     ) -> String {
-        Self::deserialize(data, object_type.to_string().as_str()).write(repository)
+        Self::deserialize(data, &object_type.to_string()).write(repository)
     }
 
-    /// Read and parse the object specified by `sha` in the given repository
-    pub fn read(repository: &Repository, sha: &str) -> anyhow::Result<Self> {
+    /// Reads and decompresses an object by its SHA from the repository.
+    ///
+    /// Validates header and size, then returns the parsed object.
+    pub fn read(repository: &Repository, sha: &str) -> Result<Self> {
         let path = repository
             .get_path_to_file(&["objects", &sha[..2], &sha[2..]])
             .ok_or_else(|| anyhow!("Object file does not exist"))?;
 
-        // Decompressing object (header + contents)
         let file = File::open(path).expect("Could not open file");
         let buf_reader = BufReader::new(file);
         let mut decoder = ZlibDecoder::new(buf_reader);
-        let mut decompressed_data = Vec::new();
-        decoder.read_to_end(&mut decompressed_data)?;
+        let mut decompressed = Vec::new();
+        decoder.read_to_end(&mut decompressed)?;
 
-        // hex dump
         print!("Raw object");
-        Self::dump(&decompressed_data);
+        Self::dump(&decompressed);
 
-        // Extract the object type
-        let obj_type_end_idx = decompressed_data
+        let type_end = decompressed
             .iter()
-            .position(|&byte| byte == b' ')
-            .ok_or_else(|| anyhow!("Malformed object: Missing space in header"))?;
+            .position(|&b| b == b' ')
+            .ok_or_else(|| anyhow!("Malformed object: missing space in header"))?;
 
-        let object_type_str = from_utf8(&decompressed_data[..obj_type_end_idx])?;
-
-        // Extract the object size
-        let obj_size_end_idx = decompressed_data[obj_type_end_idx..]
+        let size_end = decompressed[type_end..]
             .iter()
             .position(|&b| b == 0)
-            .ok_or_else(|| anyhow!("Malformed object: Missing null byte in header"))?
-            + obj_type_end_idx;
+            .map(|i| i + type_end)
+            .ok_or_else(|| anyhow!("Malformed object: missing null byte in header"))?;
 
-        let object_size: usize =
-            from_utf8(&decompressed_data[obj_type_end_idx + 1..obj_size_end_idx])?.parse()?;
+        let object_type = from_utf8(&decompressed[..type_end])?;
+        let object_size: usize = from_utf8(&decompressed[type_end + 1..size_end])?.parse()?;
 
-        let expected_length = decompressed_data.len() - (obj_size_end_idx + 1);
-
-        if object_size == expected_length {
-            let object_data = &decompressed_data[obj_size_end_idx + 1..];
-            Ok(Self::deserialize(object_data, object_type_str))
-        } else {
-            Err(anyhow!(
-                "Malformed object {}: Bad length - actual {} expected {}",
+        let content = &decompressed[size_end + 1..];
+        if object_size != content.len() {
+            return Err(anyhow!(
+                "Malformed object {}: size mismatch (expected {}, got {})",
                 sha,
                 object_size,
-                expected_length
-            ))
+                content.len()
+            ));
         }
+
+        Ok(Self::deserialize(content, object_type))
     }
 
-    /// Write the current object to the repository
+    /// Serializes and writes the object into the repository, returning its SHA-1 hash.
     pub fn write(&mut self, repository: &Repository) -> String {
         let data = self.serialize();
+        let header = format!("{} {}\x00", self.get_type(), data.len());
 
-        let header = format!("{}\x20{}\x00", self.get_type(), data.len());
         let mut payload = header.into_bytes();
         payload.extend(data);
 
-        // Compute SHA-1 hash
         let sha = {
             let mut hasher = Sha1::new();
             hasher.update(&payload);
-            hex::encode(hasher.finalize()) // SHA-1 produces a 160-bit hash
+            hex::encode(hasher.finalize())
         };
 
         repository
@@ -198,34 +202,37 @@ impl GitrsObject {
         sha
     }
 
+    /// Finds the SHA-1 hash for a given object name with optional resolution options.
     pub fn find(
         repository: &Repository,
         name: &str,
         options_opt: Option<ObjectFindOptions>,
-    ) -> anyhow::Result<String> {
+    ) -> Result<String> {
         let shas = Self::resolve(repository, name)?;
+
         match shas.len() {
             0 => Err(anyhow!("Couldn't find object with name: {}", name)),
             1 => {
-                let sha = shas.get(0).unwrap();
+                let sha = &shas[0];
                 match options_opt {
                     Some(options) => Self::find_with_options(repository, sha, options),
                     None => Ok(sha.clone()),
                 }
             }
             _ => Err(anyhow!(
-                "Ambigious reference ({}). Candidates are: {:?}",
+                "Ambiguous reference '{}'. Candidates: {:?}",
                 name,
                 shas
             )),
         }
     }
 
+    /// Helper to find an object by SHA and check/follow its type if requested.
     fn find_with_options(
         repository: &Repository,
         sha: &str,
         options: ObjectFindOptions,
-    ) -> anyhow::Result<String> {
+    ) -> Result<String> {
         let object = Self::read(repository, sha)?;
 
         if object.get_type() == options.object_type {
@@ -237,68 +244,55 @@ impl GitrsObject {
         }
 
         match object {
-            GitrsObject::CommitObject(commit_obj) if options.object_type == ObjectType::Tree => {
-                Self::find_with_options(repository, commit_obj.get_tree_hash(), options)
+            GitrsObject::CommitObject(commit) if options.object_type == ObjectType::Tree => {
+                Self::find_with_options(repository, commit.get_tree_hash(), options)
             }
-            GitrsObject::TagObject(tag_obj) => {
-                Self::find_with_options(repository, tag_obj.get_object_hash(), options)
+            GitrsObject::TagObject(tag) => {
+                Self::find_with_options(repository, tag.get_object_hash(), options)
             }
-            _ => Err(anyhow!("No object matching type")),
+            _ => Err(anyhow!("No object matching requested type")),
         }
     }
 
-    /// Resolves a human-readable name to an object hash
-    fn resolve(repository: &Repository, name: &str) -> anyhow::Result<Vec<String>> {
+    /// Resolves a human-readable reference or partial SHA to a list of matching object SHAs.
+    fn resolve(repository: &Repository, name: &str) -> Result<Vec<String>> {
         match name {
-            _ if name.trim().is_empty() => {
-                Err(anyhow!("Cannot resolve empty string as object name"))
-            }
+            _ if name.trim().is_empty() => Err(anyhow!("Cannot resolve empty object name")),
+
             "HEAD" => Ok(vec![Ref::resolve(repository, &["HEAD"])?]),
-            hash if hash.chars().all(|c| c.is_digit(16)) => {
-                let dir = &hash.to_lowercase()[..2];
 
-                // Read objects
-                let obj_path = repository
-                    .get_path_to_dir(&["objects", &dir])
-                    .ok_or_else(|| anyhow!("Object dir doesn't exist: objects/{}", dir))?;
-                let obj_name_prefix = &hash.to_lowercase()[2..];
-                let objs = fs::read_dir(obj_path)?;
+            _ if name.chars().all(|c| c.is_ascii_hexdigit()) => {
+                let dir = &name[..2].to_lowercase();
+                let prefix = &name[2..].to_lowercase();
 
-                Ok(objs.fold(Vec::new(), |mut acc, entry_res| {
-                    if let Ok(entry) = entry_res {
-                        let file_name = entry.file_name().to_string_lossy().into_owned();
-                        if file_name.starts_with(obj_name_prefix) {
-                            acc.push(format!("{}{}", dir, file_name.to_string()));
-                        }
-                    }
-                    acc
-                }))
+                let obj_dir = repository
+                    .get_path_to_dir(&["objects", dir])
+                    .ok_or_else(|| anyhow!("Object directory missing: objects/{}", dir))?;
+
+                Ok(fs::read_dir(obj_dir)?
+                    .filter_map(Result::ok)
+                    .filter_map(|entry| {
+                        let file = entry.file_name().to_string_lossy().to_string();
+                        file.strip_prefix(prefix)
+                            .map(|_| format!("{}{}", dir, file))
+                    })
+                    .collect())
             }
+
             _ => {
-                // eg. master, v10.4, etc.
-                let mut candidates = Vec::new();
-
-                // Read references (tags)
-                if let Some(tag) = Ref::resolve(repository, &["refs", "tags", name]).ok() {
-                    candidates.push(tag);
+                // Check tags, local/remote branches for matches
+                let mut results = Vec::new();
+                for path in [["refs", "tags"], ["refs", "heads"], ["refs", "remotes"]].iter() {
+                    if let Ok(resolved) = Ref::resolve(repository, &[path[0], path[1], name]) {
+                        results.push(resolved);
+                    }
                 }
-
-                // Find local branches
-                if let Some(branch) = Ref::resolve(repository, &["refs", "heads", name]).ok() {
-                    candidates.push(branch);
-                }
-
-                // Find remote branches
-                if let Some(remote) = Ref::resolve(repository, &["refs", "remotes", name]).ok() {
-                    candidates.push(remote);
-                }
-
-                Ok(candidates)
+                Ok(results)
             }
         }
     }
 
-    // Hex dump
+    /// Prints a hex dump of the provided buffer to stdout.
     pub fn dump(buf: &Vec<u8>) {
         for (i, byte) in buf.iter().enumerate() {
             if i % 16 == 0 {
