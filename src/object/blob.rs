@@ -17,3 +17,9 @@ impl Object for Blob {
         }
     }
 }
+
+impl Blob {
+    pub fn get_data(&self) -> Vec<u8> {
+        self.data.clone()
+    }
+}
