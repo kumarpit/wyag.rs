@@ -18,7 +18,7 @@ use refs::Ref;
 use repository::Repository;
 use std::fs::File;
 use std::io::{BufReader, Read};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 /// Gitrs CLI commands
 #[derive(Subcommand, Debug)]
@@ -73,6 +73,11 @@ enum Command {
     },
     /// Displays the names of files in the staging area
     LsFiles,
+    /// Stages given files
+    Add {
+        #[arg(required = true)]
+        paths: Vec<String>,
+    },
 }
 
 /// Main CLI struct for gitrs
@@ -194,7 +199,7 @@ fn main() {
             let refs = Ref::list_at(
                 &repository,
                 &repository
-                    .get_path_to_dir(&["refs"])
+                    .get_path_to_dir_if_exists(&["refs"])
                     .expect("Expected refs dir"),
             )
             .expect("Couldn't resolve refs");
@@ -235,7 +240,7 @@ fn main() {
                     let refs = Ref::list_at(
                         &repository,
                         &repository
-                            .get_path_to_dir(&["refs"])
+                            .get_path_to_dir_if_exists(&["refs"])
                             .expect("Expected refs dir"),
                     )
                     .expect("Couldn't resolve refs");
@@ -277,13 +282,29 @@ fn main() {
         }
         Command::LsFiles => {
             let repository = Repository::find_repository();
-            let index = Index::read(&repository).expect("No index file found");
+            let index = Index::read(&repository).expect("Couldn't read or initialize index file");
 
             info!("Dumping index file list");
 
             for entry in index.entries {
                 info!("{}", entry.path.display());
             }
+        }
+        Command::Add { paths } => {
+            let repository = Repository::find_repository();
+            let mut index =
+                Index::read(&repository).expect("Couldn't read or initialize index file");
+            index
+                .add(
+                    &repository,
+                    paths
+                        .iter()
+                        .map(|path_str| PathBuf::from(path_str))
+                        .collect(),
+                )
+                .expect("Couldn't add to index");
+
+            info!("Staged {:?}", paths);
         }
     };
 }

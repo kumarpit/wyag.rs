@@ -99,7 +99,7 @@ pub struct ObjectFindOptions {
 }
 
 impl GitrsObject {
-    /// Returns the `ObjectType` corresponding to this GitrsObject.
+    /// Returns the `ObjectType` corresponding to this GitrsObject.objec
     pub fn get_type(&self) -> ObjectType {
         match self {
             GitrsObject::BlobObject(_) => ObjectType::Blob,
@@ -120,8 +120,8 @@ impl GitrsObject {
     }
 
     /// Deserializes data into the appropriate GitrsObject variant based on the type string.
-    pub fn deserialize(data: &[u8], object_type: &str) -> Self {
-        match ObjectType::try_from(object_type).unwrap() {
+    pub fn deserialize(data: &[u8], object_type: ObjectType) -> Self {
+        match object_type {
             ObjectType::Blob => Self::BlobObject(Blob::deserialize(data)),
             ObjectType::Commit => Self::CommitObject(Commit::deserialize(data)),
             ObjectType::Tag => Self::TagObject(Tag::deserialize(data)),
@@ -135,7 +135,7 @@ impl GitrsObject {
         data: &[u8],
         object_type: ObjectType,
     ) -> String {
-        Self::deserialize(data, &object_type.to_string()).write(repository)
+        Self::deserialize(data, object_type).write(repository)
     }
 
     /// Reads and decompresses an object by its SHA from the repository.
@@ -143,7 +143,7 @@ impl GitrsObject {
     /// Validates header and size, then returns the parsed object.
     pub fn read(repository: &Repository, sha: &str) -> Result<Self> {
         let path = repository
-            .get_path_to_file(&["objects", &sha[..2], &sha[2..]])
+            .get_path_to_file_if_exists(&["objects", &sha[..2], &sha[2..]])
             .ok_or_else(|| anyhow!("Object file does not exist"))?;
 
         let file = File::open(path).expect("Could not open file");
@@ -166,7 +166,8 @@ impl GitrsObject {
             .map(|i| i + type_end)
             .ok_or_else(|| anyhow!("Malformed object: missing null byte in header"))?;
 
-        let object_type = from_utf8(&decompressed[..type_end])?;
+        let object_type_str = from_utf8(&decompressed[..type_end])?;
+        let object_type = ObjectType::try_from(object_type_str)?;
         let object_size: usize = from_utf8(&decompressed[type_end + 1..size_end])?.parse()?;
 
         let content = &decompressed[size_end + 1..];
@@ -190,17 +191,20 @@ impl GitrsObject {
         let mut payload = header.into_bytes();
         payload.extend(data);
 
-        let sha = {
-            let mut hasher = Sha1::new();
-            hasher.update(&payload);
-            hex::encode(hasher.finalize())
-        };
+        let sha = Self::hash(&mut payload);
 
         repository
             .upsert_file(&["objects", &sha[..2], &sha[2..]], &payload)
             .expect("Could not write object file");
 
         sha
+    }
+
+    // Returns the SHA-1 hash of the given byte vector
+    fn hash(data: &mut Vec<u8>) -> String {
+        let mut hasher = Sha1::new();
+        hasher.update(&data);
+        hex::encode(hasher.finalize())
     }
 
     /// Finds the SHA-1 hash for a given object name with optional resolution options.
@@ -267,7 +271,7 @@ impl GitrsObject {
                 let prefix = &name[2..].to_lowercase();
 
                 let obj_dir = repository
-                    .get_path_to_dir(&["objects", dir])
+                    .get_path_to_dir_if_exists(&["objects", dir])
                     .ok_or_else(|| anyhow!("Object directory missing: objects/{}", dir))?;
 
                 Ok(fs::read_dir(obj_dir)?

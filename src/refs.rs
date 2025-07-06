@@ -17,7 +17,7 @@ impl Ref {
     /// recursively resolves that reference.
     pub fn resolve(repository: &Repository, ref_path: &[&str]) -> anyhow::Result<String> {
         let path = repository
-            .get_path_to_file(ref_path)
+            .get_path_to_file_if_exists(ref_path)
             .with_context(|| format!("Not a file: {:?}", ref_path))?;
 
         let mut bytes =

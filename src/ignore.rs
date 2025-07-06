@@ -1,3 +1,5 @@
+use log::{debug, info};
+
 use crate::repository::Repository;
 use crate::{index::Index, object::GitrsObject};
 use core::str;
@@ -86,12 +88,17 @@ impl IgnoreRules {
                     _ => panic!("Malformed .gitignore entry, not a blob object"),
                 };
 
+                debug!("Dumping .gitrsignore data");
+                GitrsObject::dump(&blob_data);
+
                 let lines = str::from_utf8(&blob_data).ok()?.lines();
                 let parent = entry.path.parent()?.to_path_buf();
 
                 Some((parent, IgnoreRule::parse_lines(lines)))
             })
             .collect();
+
+        debug!("Relative ignore rules: {:?}", relative);
 
         Some(Self {
             absolute: Vec::new(), // TODO: read absolute ignore rules
@@ -103,7 +110,8 @@ impl IgnoreRules {
     /// eventually checking the absolute ignore rules if none of the repository-specific ignore
     /// rules match
     pub fn check(&self, path: &Path) -> Option<MatchKind> {
-        std::iter::successors(path.parent(), |p| p.parent()).find_map(|parent| {
+        // TODO: this function is incorrect in that this is most likely skipping one level no?
+        std::iter::successors(Some(path), |p| p.parent()).find_map(|parent| {
             // TODO: if nothing matches then look up absolute rules
             self.relative
                 .get(parent)
@@ -114,6 +122,7 @@ impl IgnoreRules {
     // If the path matches some rule, returns whether to include or exclude the file
     fn matches_rules(rules: &Vec<IgnoreRule>, path: &Path) -> Option<MatchKind> {
         for IgnoreRule { pat, kind } in rules {
+            info!("Matching pattern: {:?} for {}", pat, path.display());
             if pat.matches_path(path) {
                 return Some(kind.to_owned());
             }

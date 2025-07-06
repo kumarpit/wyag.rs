@@ -6,8 +6,12 @@ use std::{
     path::PathBuf,
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
+use typed_builder::TypedBuilder;
 
-use crate::repository::Repository;
+use crate::{
+    object::{GitrsObject, ObjectType},
+    repository::Repository,
+};
 
 /// Four‑byte file signature (“DIRC”) + binary version number.
 const INDEX_SIGNATURE: &[u8; 4] = b"DIRC";
@@ -15,14 +19,17 @@ const INDEX_VERSION: u32 = 2;
 
 const SHA_BYTES: usize = 20; // raw SHA‑1 (or any 160‑bit hash)
 
+#[derive(Default)]
 pub struct Index {
     pub version: u32,
     pub entries: Vec<IndexEntry>,
 }
 
 /// **Greatly simplified** index entry
+#[derive(TypedBuilder)]
 pub struct IndexEntry {
     pub mtime: SystemTime,
+    #[builder(setter(into))]
     pub sha: String, // 40‑char hex string on the Rust side
     pub size_in_bytes: u64,
     pub path: PathBuf,
@@ -119,37 +126,39 @@ impl Index {
     /// Read `repo/.gitrs/index`.  
     /// Returns `None` if the file is missing or corrupt.
     pub fn read(repository: &Repository) -> Option<Self> {
-        let index_file = repository.get_path_to_file(&["index"])?;
+        if let Some(index_file) = repository.get_path_to_file_if_exists(&["index"]) {
+            let data = fs::read(index_file).ok()?;
+            let mut cursor: &[u8] = &data;
 
-        let data = fs::read(index_file).ok()?;
-        let mut cursor: &[u8] = &data;
+            // ── header ──────────────────────────────────────────────────────────
+            if cursor.len() < 12 || &cursor[..4] != INDEX_SIGNATURE {
+                error!("Index file length < header length OR mismatched signature");
+                return None;
+            }
+            cursor = &cursor[4..];
 
-        // ── header ──────────────────────────────────────────────────────────
-        if cursor.len() < 12 || &cursor[..4] != INDEX_SIGNATURE {
-            error!("Index file length < header length OR mismatched signature");
-            return None;
+            let version = u32::from_be_bytes(cursor[..4].try_into().unwrap());
+            cursor = &cursor[4..];
+
+            if version != INDEX_VERSION {
+                error!("Only index version 2 is supported");
+                return None; // unsupported version
+            }
+
+            let count = u32::from_be_bytes(cursor[..4].try_into().unwrap());
+            cursor = &cursor[4..];
+
+            // ── entries ─────────────────────────────────────────────────────────
+            let mut entries = Vec::with_capacity(count as usize);
+            for _ in 0..count {
+                let entry = IndexEntry::take_from(&mut cursor)?;
+                entries.push(entry);
+            }
+
+            Some(Self { version, entries })
+        } else {
+            Some(Index::default())
         }
-        cursor = &cursor[4..];
-
-        let version = u32::from_be_bytes(cursor[..4].try_into().unwrap());
-        cursor = &cursor[4..];
-
-        if version != INDEX_VERSION {
-            error!("Only index version 2 is supported");
-            return None; // unsupported version
-        }
-
-        let count = u32::from_be_bytes(cursor[..4].try_into().unwrap());
-        cursor = &cursor[4..];
-
-        // ── entries ─────────────────────────────────────────────────────────
-        let mut entries = Vec::with_capacity(count as usize);
-        for _ in 0..count {
-            let entry = IndexEntry::take_from(&mut cursor)?;
-            entries.push(entry);
-        }
-
-        Some(Self { version, entries })
     }
 
     /// Serialise this `Index` back to disk (overwrites if present).
@@ -171,6 +180,40 @@ impl Index {
         }
 
         f.flush()?;
+
+        Ok(())
+    }
+
+    // Given a list of paths, stages them in the repository (i.e adds them to the index file -- or
+    // creates an index if there is not exisiting index file)
+    pub fn add(&mut self, repository: &Repository, paths: Vec<PathBuf>) -> anyhow::Result<()> {
+        // TODO: remove the given paths from the index if they exist
+
+        for path in paths {
+            if !repository.contains(&path) {
+                return Err(anyhow!("Path {} outside worktree", path.display()));
+            }
+
+            let data = fs::read(&path)?;
+            let mut blob = GitrsObject::deserialize(&data, ObjectType::Blob);
+            let sha = blob.write(&repository);
+
+            let metadata = fs::metadata(&path)?;
+            let mtime = metadata.modified()?;
+            let size = metadata.len();
+            let canonical_path = fs::canonicalize(&path)?;
+
+            self.entries.push(
+                IndexEntry::builder()
+                    .mtime(mtime)
+                    .sha(sha)
+                    .size_in_bytes(size)
+                    .path(canonical_path)
+                    .build(),
+            );
+        }
+
+        self.write(repository)?;
 
         Ok(())
     }

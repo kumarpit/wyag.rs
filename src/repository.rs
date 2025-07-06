@@ -13,7 +13,7 @@ use flate2::{Compression, write::ZlibEncoder};
 use log::error;
 
 pub struct Repository {
-    pub worktree: PathBuf,
+    pub worktree: PathBuf, // canonicalized
     pub gitdir: PathBuf,
 }
 
@@ -41,7 +41,7 @@ impl Repository {
     /// Constructs an in-memory handle to an existing repository
     pub fn new(worktree: &Path) -> Self {
         Self {
-            worktree: worktree.to_path_buf(),
+            worktree: fs::canonicalize(worktree).expect("Failed to canonicalize worktree path"),
             gitdir: worktree.join(".gitrs"),
         }
     }
@@ -102,18 +102,23 @@ impl Repository {
     /// Repository File Management
     /////////////////////////////////////
 
-    pub fn get_path_to_file(&self, paths: &[&str]) -> Option<PathBuf> {
+    pub fn get_path_to_file_if_exists(&self, paths: &[&str]) -> Option<PathBuf> {
         self.compute_or_create_repo_file(paths, false)
             .and_then(|(_, path)| path.exists().then_some(path))
     }
 
-    pub fn get_path_to_dir(&self, paths: &[&str]) -> Option<PathBuf> {
+    pub fn get_path_to_dir_if_exists(&self, paths: &[&str]) -> Option<PathBuf> {
         self.compute_or_create_repo_dir(paths, false)
     }
 
     pub fn create_file(&self, paths: &[&str]) -> Option<PathBuf> {
         self.compute_or_create_repo_file(paths, true)
             .and_then(|(_, path)| path.exists().then_some(path))
+    }
+
+    pub fn contains(&self, path: &Path) -> bool {
+        let canonicalized_path = fs::canonicalize(path).expect("Failed to canonicalize path");
+        canonicalized_path.starts_with(&self.worktree)
     }
 
     /// Compresses and writes to a file (upserts if exists)
