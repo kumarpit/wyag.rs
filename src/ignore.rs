@@ -1,6 +1,7 @@
 use crate::repository::Repository;
 use crate::{index::Index, object::GitrsObject};
 use core::str;
+use std::path::Path;
 use std::{collections::HashMap, path::PathBuf};
 
 /// Describes how an ignore rule should behave.
@@ -13,14 +14,24 @@ pub enum MatchKind {
 /// A single `.gitignore`-style rule.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct IgnoreRule {
-    pub pat: String,
+    pub pat: glob::Pattern,
     pub kind: MatchKind,
+}
+
+/// Collection of `.gitignore` rules, both absolute and relative.
+#[derive(Debug)]
+pub struct IgnoreRules {
+    /// Ignore rules from outside the repo (e.g. `~/.config/git/ignore`)
+    absolute: Vec<IgnoreRule>,
+    /// `.gitignore` rules tracked in the repo, keyed by their parent directory.
+    relative: HashMap<PathBuf, Vec<IgnoreRule>>,
 }
 
 impl From<(&str, MatchKind)> for IgnoreRule {
     fn from((pat, kind): (&str, MatchKind)) -> Self {
         Self {
-            pat: pat.to_string(),
+            pat: glob::Pattern::new(pat)
+                .expect(&format!("Couldn't create glob pattern from {}", pat)),
             kind,
         }
     }
@@ -56,15 +67,6 @@ impl IgnoreRule {
     }
 }
 
-/// Collection of `.gitignore` rules, both absolute and relative.
-#[derive(Debug)]
-pub struct IgnoreRules {
-    /// Ignore rules from outside the repo (e.g. `~/.config/git/ignore`)
-    absolute: Vec<IgnoreRule>,
-    /// `.gitignore` rules tracked in the repo, keyed by their parent directory.
-    relative: HashMap<PathBuf, Vec<IgnoreRule>>,
-}
-
 impl IgnoreRules {
     /// Reads all `.gitignore` rules from the repository's index.
     pub fn read(repository: &Repository) -> Option<Self> {
@@ -75,7 +77,7 @@ impl IgnoreRules {
             .into_iter()
             .filter_map(|entry| {
                 let file_name = entry.path.file_name()?;
-                if file_name != ".gitignore" {
+                if file_name != ".gitrsignore" {
                     return None;
                 }
 
@@ -95,5 +97,23 @@ impl IgnoreRules {
             absolute: Vec::new(), // TODO: read absolute ignore rules
             relative,
         })
+    }
+
+    pub fn check(&self, path: &Path) -> Option<MatchKind> {
+        std::iter::successors(path.parent(), |p| p.parent()).find_map(|parent| {
+            self.relative
+                .get(parent)
+                .and_then(|rule_set| Self::matches_rules(rule_set, path))
+        })
+    }
+
+    // If the path matches some rule, returns whether to include or exclude the file
+    fn matches_rules(rules: &Vec<IgnoreRule>, path: &Path) -> Option<MatchKind> {
+        for IgnoreRule { pat, kind } in rules {
+            if pat.matches_path(path) {
+                return Some(kind.to_owned());
+            }
+        }
+        None
     }
 }

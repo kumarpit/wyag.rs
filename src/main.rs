@@ -6,6 +6,7 @@ mod refs;
 mod repository;
 
 use clap::{Parser, Subcommand};
+use ignore::IgnoreRules;
 use log::{error, info};
 use object::GitrsObject::{CommitObject, TreeObject};
 use object::commit::Commit;
@@ -259,9 +260,17 @@ fn main() {
             info!("{}", hash);
         }
 
-        Command::CheckIgnore { paths: _ } => {
-            // TODO: Implement ignore checking logic
-            let _repository = Repository::find_repository();
+        Command::CheckIgnore { paths } => {
+            let repository = Repository::find_repository();
+            match IgnoreRules::read(&repository) {
+                Some(rules) => paths
+                    .iter()
+                    .for_each(|path| match rules.check(Path::new(path)) {
+                        Some(kind) => info!("{} {:?}", path, kind),
+                        None => info!("No rule matching {}", path),
+                    }),
+                None => info!("No ignore rules found in repository"),
+            }
         }
     };
 }
