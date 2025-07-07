@@ -83,6 +83,13 @@ enum Command {
         #[arg(required = true)]
         paths: Vec<String>,
     },
+    /// Log staging area status
+    Status,
+    /// Commit staged changes  with message
+    Commit {
+        #[arg(short = 'm', long = "message")]
+        message: String,
+    },
 }
 
 /// Main CLI struct for gitrs
@@ -328,6 +335,14 @@ fn main() {
                 .expect("Couldn't remove file from index");
 
             info!("Removed {:?}", paths);
+        }
+        Command::Status => todo!(),
+        Command::Commit { message } => {
+            // 1. Convert the inedx into a tree object
+            // 2. Generate and store the corresponding commit object
+            // 3. Update the HEAD branch to the new commit
+            let repository = Repository::find_repository();
+            // TODO:
         }
     };
 }
