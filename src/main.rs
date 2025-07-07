@@ -78,6 +78,11 @@ enum Command {
         #[arg(required = true)]
         paths: Vec<String>,
     },
+    /// Unstages given files
+    Rm {
+        #[arg(required = true)]
+        paths: Vec<String>,
+    },
 }
 
 /// Main CLI struct for gitrs
@@ -298,7 +303,7 @@ fn main() {
             index
                 .add(
                     &repository,
-                    paths
+                    &paths
                         .iter()
                         .map(|path_str| PathBuf::from(path_str))
                         .collect(),
@@ -306,6 +311,23 @@ fn main() {
                 .expect("Couldn't add to index");
 
             info!("Staged {:?}", paths);
+        }
+        Command::Rm { paths } => {
+            let repository = Repository::find_repository();
+            let mut index =
+                Index::read(&repository).expect("Couldn't read or initialize index file");
+            index
+                .rm(
+                    &repository,
+                    &paths
+                        .iter()
+                        .map(|path_str| PathBuf::from(path_str))
+                        .collect(),
+                    false,
+                )
+                .expect("Couldn't remove file from index");
+
+            info!("Removed {:?}", paths);
         }
     };
 }

@@ -200,8 +200,7 @@ impl GitrsObject {
         sha
     }
 
-    // Returns the SHA-1 hash of the given byte vector
-    fn hash(data: &mut Vec<u8>) -> String {
+    pub fn hash(data: &mut Vec<u8>) -> String {
         let mut hasher = Sha1::new();
         hasher.update(&data);
         hex::encode(hasher.finalize())

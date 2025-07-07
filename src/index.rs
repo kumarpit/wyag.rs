@@ -1,4 +1,4 @@
-use anyhow::anyhow;
+use anyhow::{Context, anyhow};
 use log::error;
 use std::{
     fs::{self, File},
@@ -34,10 +34,6 @@ pub struct IndexEntry {
     pub size_in_bytes: u64,
     pub path: PathBuf,
 }
-
-/////////////////////////////////////
-// IndexEntry ⇄ byte‑vector
-/////////////////////////////////////
 
 // TODO: these could be TryFrom trait implementations
 impl IndexEntry {
@@ -186,8 +182,8 @@ impl Index {
 
     // Given a list of paths, stages them in the repository (i.e adds them to the index file -- or
     // creates an index if there is not exisiting index file)
-    pub fn add(&mut self, repository: &Repository, paths: Vec<PathBuf>) -> anyhow::Result<()> {
-        // TODO: remove the given paths from the index if they exist
+    pub fn add(&mut self, repository: &Repository, paths: &Vec<PathBuf>) -> anyhow::Result<()> {
+        self.rm(repository, paths, true)?;
 
         for path in paths {
             if !repository.contains(&path) {
@@ -211,6 +207,45 @@ impl Index {
                     .path(canonical_path)
                     .build(),
             );
+        }
+
+        self.write(repository)?;
+
+        Ok(())
+    }
+
+    // Unstages given list of paths (i.e removes them from the index file if they exist)
+    pub fn rm(
+        &mut self,
+        repository: &Repository,
+        paths: &Vec<PathBuf>,
+        skip_missing: bool,
+    ) -> anyhow::Result<()> {
+        for path in paths {
+            if !repository.contains(&path) {
+                return Err(anyhow!("Path {} outside worktree", path.display()));
+            }
+
+            let canonical_path = fs::canonicalize(&path)?;
+
+            let index_opt = self
+                .entries
+                .iter()
+                .position(|entry| entry.path == canonical_path);
+
+            match index_opt {
+                None => {
+                    if !skip_missing {
+                        return Err(anyhow!(
+                            "Path {} does not exist in index",
+                            canonical_path.display()
+                        ));
+                    }
+                }
+                Some(index) => {
+                    self.entries.remove(index);
+                }
+            }
         }
 
         self.write(repository)?;

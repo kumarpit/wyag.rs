@@ -111,7 +111,6 @@ impl IgnoreRules {
     /// rules match
     pub fn check(&self, path: &Path) -> Option<MatchKind> {
         debug!("Called check on: {:?}", path.display());
-        // TODO: this function is incorrect in that this is most likely skipping one level no?
         std::iter::successors(path.parent(), |p| p.parent()).find_map(|parent| {
             // TODO: if nothing matches then look up absolute rules
             debug!("Trying to lookup path: {:?}", parent.display());
